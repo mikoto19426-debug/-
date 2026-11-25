@@ -33,3 +33,14 @@
 
 ## フォント
 数字の表示に [Barlow Semi Condensed](https://github.com/jpt/barlow) を同梱しています（SIL Open Font License 1.1、`fonts/OFL.txt`）。
+
+## デザインチェック用AIエージェント（開発者向け）
+Claude Code で「デザインをチェックして」「見た目を良くして」と頼むと、`design-reviewer` エージェントが次の順で作業します。
+1. スマホ・タブレット・PC × ライト・ダークで画面を撮影する（サンプルデータを入れた状態）
+2. 画像を見て、目的の達成・読みやすさ・押しやすさなどを採点する
+3. 大きな問題から3〜5個に絞ってCSS/HTMLを直す（「チェックだけ」と頼めば直さない）
+4. 撮り直して改善前と比べ、報告する
+
+- 指示書：`.claude/agents/design-reviewer.md`
+- 撮影と機械チェックの道具：`.claude/design-review/shoot.js`（文字のコントラスト不足・小さすぎる文字や押す部分・はみ出し・labelのない入力欄・JSエラーを検出）
+- このアプリ用のサンプルデータ：`.claude/design-review/sample-data.js`
