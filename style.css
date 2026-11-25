@@ -115,3 +115,14 @@ th:first-child, td:first-child { text-align: left; }
 #toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; font-size: .9rem; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: calc(100% - 32px); }
 #toast.show { opacity: 1; }
 .empty { color: var(--muted); text-align: center; padding: 20px 0; font-size: .9rem; }
+.badges { display: flex; gap: 6px; }
+.badge.warn { color: var(--exp); border-color: var(--exp); }
+.badge.ok { color: var(--inc); border-color: var(--inc); }
+.small { font-size: .8rem; }
+.sync-status { margin: 10px 0; font-size: .9rem; }
+details { margin-top: 14px; }
+summary { cursor: pointer; font-size: .9rem; font-weight: 600; }
+ol.small { padding-left: 1.3em; }
+ol.small li { margin-bottom: 4px; }
+code { font-size: .8rem; background: var(--bg); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+a { color: var(--accent); }

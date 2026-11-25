@@ -12,7 +12,7 @@
 <body>
 <header>
   <h1>オフライン会計</h1>
-  <span id="netStatus" class="badge"></span>
+  <span class="badges"><span id="syncBadge" class="badge" hidden></span><span id="netStatus" class="badge"></span></span>
 </header>
 
 <nav id="tabs">
@@ -103,6 +103,30 @@
         <button type="submit">追加</button>
       </form>
     </div>
+    <h2>同期（Googleドライブ）</h2>
+    <div class="card">
+      <p class="muted">複数の端末で同じ帳簿を使うための機能です。オフラインの間はそれぞれの端末に保存され、ネットにつながったときに自動でまとめられます。データはあなたのGoogleドライブの、このアプリ専用の非表示フォルダに保存されます。</p>
+      <div id="syncStatus" class="sync-status"></div>
+      <div class="row wrap">
+        <button id="syncNow" class="primary">今すぐ同期</button>
+        <button id="syncUnlink">連携を解除</button>
+      </div>
+      <details id="syncSetup">
+        <summary>初回設定（Google クライアントID）</summary>
+        <ol class="muted small">
+          <li>このアプリを HTTPS で公開する（例：GitHub Pages）。<code>index.html</code> を直接開いた状態では同期できません。</li>
+          <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener">Google Cloud Console</a> でプロジェクトを作り、「Google Drive API」を有効にする。</li>
+          <li>「OAuth 同意画面」を設定し、テストユーザーに自分のGoogleアカウントを追加する。</li>
+          <li>「認証情報」→「OAuth クライアントID」→種類「ウェブアプリケーション」。「承認済みの JavaScript 生成元」に公開したURL（例：<code>https://ユーザー名.github.io</code>）を登録する。</li>
+          <li>表示されたクライアントIDを下に貼り付けて保存。各端末で1回ずつ設定します。</li>
+        </ol>
+        <form id="clientIdForm" class="row">
+          <input name="clientId" placeholder="xxxxx.apps.googleusercontent.com" autocomplete="off">
+          <button type="submit">保存</button>
+        </form>
+      </details>
+    </div>
+
     <h2>データ</h2>
     <div class="card">
       <p class="muted">データはこの端末のブラウザ内（IndexedDB）に保存され、ネットがなくても使えます。端末の故障やブラウザのデータ削除に備えて、定期的にバックアップしてください。</p>
@@ -110,8 +134,13 @@
       <div class="row wrap">
         <button id="exportJson" class="primary">バックアップ（JSON）</button>
         <button id="exportCsv">CSV書き出し</button>
-        <label class="btn">復元（JSON読込）<input type="file" id="importJson" accept="application/json,.json" hidden></label>
       </div>
+      <h3>JSONファイルを読み込む</h3>
+      <div class="row wrap">
+        <label class="btn">合体して取り込む<input type="file" id="mergeJson" accept="application/json,.json" hidden></label>
+        <label class="btn">置き換えて復元<input type="file" id="importJson" accept="application/json,.json" hidden></label>
+      </div>
+      <p class="muted small">「合体」はこの端末のデータを残したまま、ファイル側の入力を追加・更新します。Googleを使わずに、別の端末のデータを手作業でまとめたいときに使います。</p>
       <p id="lastBackup" class="muted"></p>
       <div class="row wrap danger-zone">
         <button id="wipe" class="danger">全データ削除</button>
