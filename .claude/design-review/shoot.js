@@ -48,6 +48,9 @@ const SCHEMES = ['light', 'dark'];
 function audit() {
   const issues = [];
   const visible = (el) => {
+    if (el.checkVisibility && !el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+    const closed = el.closest('details:not([open])');
+    if (closed && !el.closest('summary')) return false;
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && +s.opacity !== 0;
@@ -56,7 +59,10 @@ function audit() {
     let s = el.tagName.toLowerCase();
     if (el.id) s += '#' + el.id;
     else if (el.classList.length) s += '.' + [...el.classList].slice(0, 2).join('.');
-    const t = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ');
+    if (!el.id && el.name) s += `[name=${el.name}]`;
+    const form = el.closest('form[id], section[id]');
+    if (form && !el.id) s = `#${form.getAttribute('id')} ` + s;
+    const t = (el.innerText || el.value || el.getAttribute('aria-label') || el.placeholder || '').trim().replace(/\s+/g, ' ');
     return t ? `${s}「${t.slice(0, 20)}」` : s;
   };
 
@@ -178,7 +184,7 @@ function audit() {
 
   for (const scheme of SCHEMES) {
     for (const vp of VIEWPORTS) {
-      const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, colorScheme: scheme, deviceScaleFactor: 1 });
+      const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, colorScheme: scheme, deviceScaleFactor: 1, locale: 'ja-JP', timezoneId: 'Asia/Tokyo' });
       const page = await ctx.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(String(e.message || e)));
@@ -198,11 +204,22 @@ function audit() {
           catch (e) { report.shots.push({ scheme, viewport: vp.name, step: stepName, error: `クリックできません: ${sel}` }); continue; }
         }
         const base = path.join(args.out, `${String(i).padStart(2, '0')}-${stepName}-${vp.name}-${scheme}`);
-        const file = base + '.png';          // 開いた直後に見える1画面（固定ヘッダー・タブも正しい位置）
-        const full = base + '-full.png';     // ページ全体（固定要素が途中に写ることがある）
-        await page.evaluate(() => window.scrollTo(0, 0));
+        const file = base + '.png';          // 操作した直後に実際に見える1画面（スクロール位置もそのまま）
+        const full = base + '-full.png';     // ページ全体（固定・追従する部品はページの流れに戻して、隠れる部分が出ないようにする）
         await page.screenshot({ path: file });
+        const pos = await page.evaluate(() => {
+          const y = window.scrollY;
+          const changed = [];
+          for (const el of document.querySelectorAll('body *')) {
+            const p = getComputedStyle(el).position;
+            if (p === 'fixed' || p === 'sticky') { changed.push([el, el.style.position]); el.style.position = 'static'; }
+          }
+          window.__restore = () => { for (const [el, v] of changed) el.style.position = v; window.scrollTo(0, y); };
+          return changed.length;
+        });
         await page.screenshot({ path: full, fullPage: true });
+        await page.evaluate(() => window.__restore());
+        void pos;
         const result = await page.evaluate(audit);
         report.shots.push({ scheme, viewport: vp.name, step: stepName, file, full, ...result });
       }
@@ -228,9 +245,14 @@ function audit() {
   for (const s of report.shots) if (s.consoleErrors) console.log(`⚠ JSエラー(${s.viewport}/${s.scheme}): ${s.consoleErrors.join(' / ')}`);
   console.log(`\n機械チェックで見つかった問題: ${tally.size}件`);
   for (const e of tally.values()) {
-    const where = e.where.size === 6 * steps.length ? '全画面' : [...e.where].slice(0, 4).join(', ') + (e.where.size > 4 ? ` 他${e.where.size - 4}` : '');
+    const total = report.shots.filter((s) => s.file).length;
+    const where = e.where.size === total ? '全画面' : [...e.where].slice(0, 4).join(', ') + (e.where.size > 4 ? ` 他${e.where.size - 4}` : '');
     console.log(`- ${e.type}: ${e.el}${e.detail ? ' — ' + e.detail : ''} [${where}]`);
   }
-  const st = report.shots.find((s) => s.stats)?.stats;
-  if (st) console.log(`\n書体: ${st.書体.join(', ')} / 文字サイズ ${st.文字サイズの種類}種類 (${st.文字サイズ.join(' ')}) / 色 ${st.色の種類}種類`);
+  console.log('\n画面ごとの書体・文字サイズ・色の数（スマホ・ライト）:');
+  for (const s of report.shots) {
+    if (!s.stats || s.viewport !== 'phone' || s.scheme !== 'light') continue;
+    const st = s.stats;
+    console.log(`- ${s.step}: 書体 ${st.書体.join(', ')} / 文字サイズ ${st.文字サイズの種類}種類 (${st.文字サイズ.join(' ')}) / 色 ${st.色の種類}種類`);
+  }
 })().catch((e) => { console.error(e); process.exit(1); });
