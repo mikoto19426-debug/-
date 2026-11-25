@@ -1,6 +1,6 @@
 // アプリ本体をキャッシュしてオフラインでも起動できるようにする
-const CACHE = 'offline-kaikei-v3';
-const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'offline-kaikei-v4';
+const ASSETS = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'fonts/barlow-sc-600.woff2', 'fonts/barlow-sc-800.woff2'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

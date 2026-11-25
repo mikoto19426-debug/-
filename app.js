@@ -264,9 +264,9 @@ function txHTML(t) {
   const sign = t.type === 'income' ? '+' : t.type === 'expense' ? '-' : '';
   const cls = t.type === 'income' ? 'inc' : t.type === 'expense' ? 'exp' : 'tr';
   const title = t.type === 'transfer' ? `${esc(accName(t.account))} → ${esc(accName(t.toAccount))}` : esc(t.category);
-  const meta = [TYPE_LABEL[t.type], t.type === 'transfer' ? '' : accName(t.account), t.memo].filter(Boolean).map(esc).join(' ・ ');
+  const meta = [TYPE_LABEL[t.type], t.type === 'transfer' ? '' : accName(t.account), t.memo].filter(Boolean).map((x) => `<span>${esc(x)}</span>`).join('');
   return `<div class="tx">
-    <div><div>${title}</div><div class="meta">${meta}</div></div>
+    <div><div class="title">${title}</div><div class="meta">${meta}</div></div>
     <div class="amt ${cls}">${sign}${yen(t.amount)}</div>
     <div class="meta"></div>
     <div class="acts"><button data-act="edit" data-id="${esc(t.id)}">編集</button> <button data-act="del" data-id="${esc(t.id)}">削除</button></div>
@@ -400,7 +400,7 @@ function renderSettings() {
 async function renderStorageInfo() {
   if (!navigator.storage?.estimate) return;
   const [est, persisted] = await Promise.all([navigator.storage.estimate(), navigator.storage.persisted?.()]);
-  $('#storageInfo').textContent = `取引 ${txs.length}件 ・ 使用量 約${Math.ceil((est.usage || 0) / 1024)}KB ・ ` +
+  $('#storageInfo').textContent = `取引 ${txs.length}件、使用量 約${Math.ceil((est.usage || 0) / 1024)}KB、` +
     (persisted ? '永続保存: 有効（ブラウザに自動削除されません）' : '永続保存: 未許可');
 }
 
@@ -495,12 +495,13 @@ function renderOrders() {
   const hide = $('#hideServed').checked;
   const list = hide ? all.filter((o) => !o.served) : all;
   const waiting = all.filter((o) => !o.served).length;
-  $('#todayStats').textContent = all.length ? `${all.length}件 ・ ${yen(all.reduce((s, o) => s + o.amount, 0))} ・ 未お渡し ${waiting}件` : '';
+  $('#todayStats').innerHTML = all.length
+    ? `<span><b>${all.length}</b>件</span><span><b>${yen(all.reduce((s, o) => s + o.amount, 0))}</b></span><span>お渡し待ち <b>${waiting}</b>件</span>` : '';
   $('#orders').innerHTML = list.length
     ? `<div class="card">${list.map((o) => `<div class="order ${o.served ? 'served' : ''}">
         <div class="ticket ${o.ticket ? '' : 'none'}">${o.ticket ?? '番号なし'}</div>
         <div class="oitems">${esc((o.items || []).map((l) => `${l.name}×${l.qty}`).join('、'))}
-          <div class="meta">${new Date(o.createdAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} ・ ${yen(o.amount)}</div></div>
+          <div class="meta"><span>${new Date(o.createdAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}</span><span class="num">${yen(o.amount)}</span></div></div>
         <div class="oacts">
           <button type="button" data-serve="${esc(o.id)}" class="${o.served ? '' : 'primary'}">${o.served ? '戻す' : 'お渡し'}</button>
           <button type="button" data-act="del" data-id="${esc(o.id)}">取消</button>
@@ -624,10 +625,17 @@ $('#checkout').addEventListener('click', async () => {
     return toast('保存に失敗しました: ' + err.message);
   }
   const change = paidRaw === '' ? null : paid - total;
-  $('#lastOrder').innerHTML = `<div class="muted">会計しました</div>
-    <div class="big-ticket">${ticket ? `整理券 ${ticket} 番` : '番号なし'}</div>
-    <div>${esc(lines.map((l) => `${l.name}×${l.qty}`).join('、'))}</div>
-    <div class="change">合計 ${yen(total)}${change != null ? `　おつり <span class="inc">${yen(change)}</span>` : ''}</div>`;
+  // 整理券の形で、お客さんに伝える番号を大きく出す
+  $('#lastOrder').innerHTML = `<div class="ticket-stub" role="status" aria-label="${ticket ? `整理券 ${ticket} 番` : '整理券なし'}">
+    <div class="stub-top">
+      <div class="stub-label">整理券</div>
+      <div class="stub-no big-ticket ${ticket ? '' : 'none'}">${ticket ?? '番号なし'}</div>
+    </div>
+    <div class="stub-bottom">
+      <div class="stub-items">${esc(lines.map((l) => `${l.name}×${l.qty}`).join('、'))}</div>
+      <div class="stub-sum"><span>合計<b>${yen(total)}</b></span>${change != null ? `<span>おつり<b>${yen(change)}</b></span>` : ''}</div>
+    </div>
+  </div>`;
   $('#lastOrder').hidden = false;
   cart.clear();
   $('#paid').value = '';
@@ -802,7 +810,7 @@ function renderGoal(n) {
   if (goal > 0 && n.menu.some((m) => Number(m.planQty) > 0)) {
     const diff = n.plan.profit - goal;
     html += `<p class="small" style="margin-top:10px">予定どおり全部売れたら利益 <b>${yen(n.plan.profit)}</b>
-      → ${diff >= 0 ? `<span class="inc">目標に届きます（${yen(diff)} 余る）</span>` : `<span class="exp">目標に ${yen(-diff)} 足りません</span>`}</p>`;
+      。${diff >= 0 ? `<span class="inc">目標に届きます（${yen(diff)} 余る）</span>` : `<span class="exp">目標に ${yen(-diff)} 足りません</span>`}</p>`;
   }
   $('#goalView').innerHTML = html;
 }
@@ -1179,7 +1187,7 @@ function renderSync() {
   else if (syncing) msg = '同期中…';
   else {
     msg = local.lastSync ? `最終同期: ${fmtTime(local.lastSync)}` : 'まだ同期していません。「今すぐ同期」を押してGoogleにログインしてください。';
-    if (n) msg += `　・　未同期の変更 ${n}件` + (navigator.onLine ? '' : '（ネットにつながると同期します）');
+    if (n) msg += `\n未同期の変更 ${n}件` + (navigator.onLine ? '' : '（ネットにつながると同期します）');
     if (syncError) msg += `\n${syncError}`;
   }
   el.textContent = msg;

@@ -30,3 +30,6 @@
 
 ## 注意
 - ブラウザの「閲覧データを削除」でデータが消えることがあります。**定期的にJSONバックアップを取ってください。**
+
+## フォント
+数字の表示に [Barlow Semi Condensed](https://github.com/jpt/barlow) を同梱しています（SIL Open Font License 1.1、`fonts/OFL.txt`）。
