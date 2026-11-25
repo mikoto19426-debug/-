@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>オフライン会計</title>
+<meta name="theme-color" content="#2f6f5e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>オフライン会計</h1>
+  <span id="netStatus" class="badge"></span>
+</header>
+
+<nav id="tabs">
+  <button data-tab="entry" class="active">入力</button>
+  <button data-tab="list">一覧</button>
+  <button data-tab="report">集計</button>
+  <button data-tab="settings">設定</button>
+</nav>
+
+<main>
+  <!-- 入力 -->
+  <section id="tab-entry" class="tab active">
+    <form id="entryForm" class="card">
+      <input type="hidden" name="id">
+      <div class="seg" id="typeSeg">
+        <label><input type="radio" name="type" value="expense" checked><span>支出</span></label>
+        <label><input type="radio" name="type" value="income"><span>収入</span></label>
+        <label><input type="radio" name="type" value="transfer"><span>振替</span></label>
+      </div>
+      <label>日付<input type="date" name="date" required></label>
+      <label>金額（円）<input type="number" name="amount" min="1" step="1" inputmode="numeric" required></label>
+      <label class="for-normal">科目<select name="category"></select></label>
+      <label><span class="for-normal">口座</span><span class="for-transfer">振替元</span><select name="account"></select></label>
+      <label class="for-transfer">振替先<select name="toAccount"></select></label>
+      <label>摘要・メモ<input type="text" name="memo" maxlength="200" placeholder="例：文房具"></label>
+      <div class="row">
+        <button type="submit" class="primary" id="saveBtn">保存</button>
+        <button type="button" id="cancelEdit" hidden>編集をやめる</button>
+      </div>
+    </form>
+    <h2>最近の取引</h2>
+    <div id="recent"></div>
+  </section>
+
+  <!-- 一覧 -->
+  <section id="tab-list" class="tab">
+    <div class="card filters">
+      <label>月<input type="month" id="listMonth"></label>
+      <label>種類<select id="listType"><option value="">すべて</option><option value="expense">支出</option><option value="income">収入</option><option value="transfer">振替</option></select></label>
+      <label>検索<input type="search" id="listQuery" placeholder="メモ・科目"></label>
+    </div>
+    <div id="listSummary" class="muted"></div>
+    <div id="list"></div>
+  </section>
+
+  <!-- 集計 -->
+  <section id="tab-report" class="tab">
+    <div class="card filters">
+      <label>期間
+        <select id="reportMode"><option value="month">月</option><option value="year">年</option></select>
+      </label>
+      <label id="reportMonthWrap">月<input type="month" id="reportMonth"></label>
+      <label id="reportYearWrap" hidden>年<input type="number" id="reportYear" min="2000" max="2100"></label>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="muted">収入</div><div id="sumIncome" class="num inc"></div></div>
+      <div class="stat"><div class="muted">支出</div><div id="sumExpense" class="num exp"></div></div>
+      <div class="stat"><div class="muted">収支</div><div id="sumNet" class="num"></div></div>
+    </div>
+    <h2>支出の内訳</h2>
+    <div id="byCatExpense" class="card"></div>
+    <h2>収入の内訳</h2>
+    <div id="byCatIncome" class="card"></div>
+    <h2 id="monthlyTitle" hidden>月別推移</h2>
+    <div id="monthly" class="card" hidden></div>
+    <h2>口座残高（現在）</h2>
+    <div id="balances" class="card"></div>
+  </section>
+
+  <!-- 設定 -->
+  <section id="tab-settings" class="tab">
+    <h2>口座</h2>
+    <div class="card">
+      <div id="accountList"></div>
+      <form id="accountForm" class="row">
+        <input name="name" placeholder="口座名（例：普通預金）" required>
+        <input name="opening" type="number" step="1" placeholder="期首残高" value="0">
+        <button type="submit">追加</button>
+      </form>
+    </div>
+    <h2>科目</h2>
+    <div class="card">
+      <h3>支出</h3><div id="catExpense" class="chips"></div>
+      <h3>収入</h3><div id="catIncome" class="chips"></div>
+      <form id="catForm" class="row">
+        <select name="kind"><option value="expense">支出</option><option value="income">収入</option></select>
+        <input name="name" placeholder="科目名" required>
+        <button type="submit">追加</button>
+      </form>
+    </div>
+    <h2>データ</h2>
+    <div class="card">
+      <p class="muted">データはこの端末のブラウザ内（IndexedDB）に保存され、ネットがなくても使えます。端末の故障やブラウザのデータ削除に備えて、定期的にバックアップしてください。</p>
+      <p id="storageInfo" class="muted"></p>
+      <div class="row wrap">
+        <button id="exportJson" class="primary">バックアップ（JSON）</button>
+        <button id="exportCsv">CSV書き出し</button>
+        <label class="btn">復元（JSON読込）<input type="file" id="importJson" accept="application/json,.json" hidden></label>
+      </div>
+      <p id="lastBackup" class="muted"></p>
+      <div class="row wrap danger-zone">
+        <button id="wipe" class="danger">全データ削除</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
