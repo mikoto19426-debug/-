@@ -4,7 +4,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&family=Cormorant+Garamond:wght@500;600&display=swap">
 <style>
-/* Layout: a tall scroll track drives one fixed WebGL view of the real painting; captions float above it. Single night look. */
+/* Layout: a tall scroll track drives one fixed three.js view; the painting becomes a walkable 3D street. Single night look. */
 :root {
   --night: #0c1636;
   --ink: #070d24;
@@ -26,15 +26,18 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   -webkit-tap-highlight-color: transparent;
 }
-#track { height: 1500vh; }
+#track { height: 1600vh; }
 #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-#fallback { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+#glow {
+  position: fixed; inset: 0; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at 50% 55%, rgba(255, 214, 120, 0.55), rgba(255, 170, 60, 0.18) 60%, rgba(255, 150, 50, 0.08));
+  mix-blend-mode: screen;
+}
 #cap {
   position: fixed; left: 50%;
-  top: calc(9% + env(safe-area-inset-top, 0px));
+  bottom: calc(11% + env(safe-area-inset-bottom, 0px));
   transform: translate(-50%, 8px);
-  width: max-content;
-  max-width: min(86vw, 30em);
+  width: max-content; max-width: min(86vw, 30em);
   padding: 0.6em 1.6em;
   font-family: var(--font-jp); font-weight: 600;
   font-size: clamp(16px, 2.3vw, 28px); line-height: 1.6;
@@ -46,12 +49,11 @@ body {
   pointer-events: none; text-wrap: balance;
 }
 #cap.on { opacity: 1; transform: translate(-50%, 0); }
-#cap.low { top: auto; bottom: calc(12% + env(safe-area-inset-bottom, 0px)); }
 #hint {
   position: fixed; left: 50%;
-  bottom: calc(5% + env(safe-area-inset-bottom, 0px));
+  bottom: calc(3.5% + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
   color: var(--muted); font-family: var(--font-jp); font-size: 13px;
   transition: opacity 0.6s ease; pointer-events: none;
 }
@@ -59,7 +61,7 @@ body {
 #hint .mouse::after { content: ""; position: absolute; left: 50%; top: 6px; width: 3px; height: 7px; margin-left: -1.5px; border-radius: 2px; background: var(--gas); animation: wheel 1.8s ease-in-out infinite; }
 @keyframes wheel { 0% { transform: translateY(0); opacity: 1; } 70% { transform: translateY(10px); opacity: 0; } 100% { opacity: 0; } }
 #bonjour {
-  position: fixed; left: 50%; top: 78%;
+  position: fixed; left: 50%; top: 80%;
   transform: translate(-50%, -40%) scale(0.96);
   font-family: var(--font-fr); font-weight: 600;
   font-size: clamp(60px, 11vw, 180px); letter-spacing: 0.04em;
@@ -84,11 +86,11 @@ body {
   bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   font-family: var(--font-jp); font-size: 11px; line-height: 1.5;
   color: var(--muted); text-shadow: 0 0 6px var(--ink);
-  pointer-events: none; max-width: 60vw;
+  pointer-events: none; max-width: 40vw;
 }
 #top {
   position: fixed; left: 50%;
-  bottom: calc(6% + env(safe-area-inset-bottom, 0px));
+  bottom: calc(5% + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   font-family: var(--font-jp); font-weight: 600; font-size: 15px;
   color: var(--cream);
@@ -101,6 +103,7 @@ body {
 #top:focus-visible { outline: 3px solid var(--gas); outline-offset: 3px; }
 #loading {
   position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 24px; text-align: center;
   font-family: var(--font-jp); font-size: 16px; color: var(--muted);
   background: var(--night); transition: opacity 0.8s ease;
 }
@@ -110,8 +113,8 @@ body {
 </style>
 
 <div id="track"></div>
-<canvas id="stage" role="img" aria-label="ゴッホの「夜のカフェテラス」の中へスクロールで入っていき、最後に麦わら帽子のゴッホに出会う。"></canvas>
-<img id="fallback" alt="フィンセント・ファン・ゴッホ「夜のカフェテラス」" hidden>
+<canvas id="stage" role="img" aria-label="ゴッホの「夜のカフェテラス」の中に入り、立体になった通りを歩いてカフェの前を進み、最後に麦わら帽子のゴッホに出会う。"></canvas>
+<div id="glow"></div>
 <div id="cap" aria-live="polite"></div>
 <div id="hint"><div class="mouse"></div><span>スクロール</span></div>
 <div id="bonjour" aria-hidden="true">Bonjour</div>
@@ -120,6 +123,7 @@ body {
 <button id="top" type="button" hidden>最初から</button>
 <div id="loading">絵を運んでいます…</div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (() => {
 'use strict';
@@ -128,9 +132,16 @@ const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const DEG = Math.PI / 180;
+const loadEl = document.getElementById('loading');
+if (!window.THREE) { loadEl.textContent = '3Dの部品を読み込めませんでした。ページを再読み込みしてください。'; return; }
 
-/* painting geometry, measured on the images (u, v in 0..1 of each image) */
-const ASP_A = 2348 / 2945, ASP_B = 2087 / 2700;
+/* ---------- how the painter "saw" the scene ----------
+   Painting coords (u right, v down, 0..1). Width/height = A.
+   The eye stood 1.6 m above the street; the street vanishes at VP.
+   f = focal length in painting-height units. */
+const A = 2348 / 2945, ASP_B = 2087 / 2700;
+const VP = [0.56, 0.52], F = 0.96, EYE = 1.6;
 const STARS = [
   [.722, .024, .0146], [.507, .072, .0097], [.633, .190, .0136], [.693, .113, .0097],
   [.543, .240, .0088], [.599, .014, .0068], [.389, .039, .0058], [.569, .130, .0058],
@@ -138,234 +149,359 @@ const STARS = [
   [.442, .037, .0058], [.717, .166, .0050], [.653, .072, .0048], [.757, .161, .0046]
 ];
 const LAMP = [.37, .478];
-
-/* camera keyframes: [scroll, centerX (painting-height units), centerY, view height] */
-const A = ASP_A;
-const KA = [
-  [0.00, A / 2, 0.50, 2.40],  // museum after closing
-  [0.10, A / 2, 0.46, 1.15],  // walking up to the frame
-  [0.18, 0.42, 0.20, 0.50],   // floating in the sky
-  [0.27, 0.46, 0.19, 0.42],   // drifting among the stars
-  [0.40, 0.44, 0.60, 0.44],   // sinking down between the houses
-  [0.48, 0.48, 0.82, 0.38],   // feet on the cobblestones
-  [0.57, 0.30, 0.62, 0.36],   // turning toward the café lights
-  [0.65, 0.32, 0.59, 0.24],   // the waiter in white
-  [0.73, 0.345, 0.72, 0.19],  // the empty table
-  [0.80, 0.345, 0.735, 0.12], // sitting down
-  [0.87, 0.52, 0.735, 0.12],  // turning to the right
-  [1.00, 0.52, 0.735, 0.12]
-];
-const KB = [
-  [0.00, 0.47, 0.44, 0.30], [0.80, 0.47, 0.44, 0.30], [0.93, 0.36, 0.47, 0.46], [1.00, 0.37, 0.47, 0.48]
-];
-const CAPS = [
-  [0.00, 0.06, '閉館後の美術館。一枚の絵だけが、まだ光っている。', true],
-  [0.07, 0.15, '近づくと、絵の中から夜風が吹いてきた。', true],
-  [0.18, 0.27, '気がつくと、1888年、アルルの夜空に浮かんでいた。', false],
-  [0.29, 0.42, '星にまぎれて、ゆっくりと街へ降りていく。', false],
-  [0.44, 0.52, '石畳に、そっと足がついた。', true],
-  [0.54, 0.62, '通りの先に黄色い明かり。にぎやかな声。カフェテラスだ。', false],
-  [0.64, 0.71, '白いエプロンの給仕さんが、空いている席をすすめてくれた。', true],
-  [0.73, 0.80, '腰をおろすと、となりの席から声がした。', true],
-  [0.86, 0.915, '「やあ、きみも絵の中に来たのかい？」', true],
-  [0.915, 0.955, '「ぼくはフィンセント。この夜を描いているところさ」', true]
+// people in the painting: [u0, v0, u1, v1] (v1 = where their feet touch the ground)
+const PEOPLE = [
+  [.385, .545, .43, .665],  // waiter in white
+  [.20, .585, .30, .668],   // guests, left tables
+  [.30, .580, .385, .662],  // guests, middle tables
+  [.43, .585, .50, .660],   // guests, right tables
+  [.555, .565, .60, .648],  // man in yellow
+  [.63, .555, .70, .638],   // couple walking
+  [.585, .545, .615, .612], // woman in red
+  [.47, .545, .51, .592]    // far figures
 ];
 
-function sample(keys, p) {
-  if (p <= keys[0][0]) return keys[0].slice(1);
-  for (let i = 0; i < keys.length - 1; i++) {
-    const a = keys[i], b = keys[i + 1];
-    if (p <= b[0]) { const t = ease((p - a[0]) / (b[0] - a[0])); return [lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)]; }
-  }
-  return keys[keys.length - 1].slice(1);
+const rayOf = (u, v) => [(u - VP[0]) * A / F, -(v - VP[1]) / F];
+function backDepth(u, v) {
+  const [rx, ry] = rayOf(u, v);
+  let z = 90;                                                   // sky
+  if (ry < 0) z = Math.min(z, EYE / -ry);                       // street and terrace floor
+  if (rx < 0) { const zw = 2.2 / -rx, y = EYE + ry * zw; if (y < 16) z = Math.min(z, zw); }  // café facade
+  if (rx > 0) { const zr = 5.2 / rx, y = EYE + ry * zr; if (y < 11.5) z = Math.min(z, zr); } // houses on the right
+  if (ry < 0.02 && Math.abs(rx) < .3) z = Math.min(z, 70);       // end of the street
+  return z;
 }
-function fitInside(cam, asp, screenAsp, w) {
-  if (w <= 0) return cam;
-  const h = Math.min(cam[2], asp / screenAsp, 1);
-  const hw = h * screenAsp / 2, hh = h / 2;
-  const x = clamp(cam[0], hw, asp - hw), y = clamp(cam[1], hh, 1 - hh);
-  return [lerp(cam[0], x, w), lerp(cam[1], y, w), lerp(cam[2], h, w)];
+function awningDepth(u, v) {
+  const [rx, ry] = rayOf(u, v);
+  if (ry <= 0) return 0;
+  const zc = (3.2 - EYE) / ry, x = rx * zc;
+  return (x > -2.2 && x < -0.45 && zc < 22 && zc < backDepth(u, v)) ? zc : 0;
 }
 
-/* ---------- DOM ---------- */
+/* ---------- three.js setup ---------- */
 const cv = document.getElementById('stage');
-const capEl = document.getElementById('cap'), hintEl = document.getElementById('hint');
-const bonEl = document.getElementById('bonjour'), railEl = document.querySelector('#rail i');
-const topEl = document.getElementById('top'), loadEl = document.getElementById('loading');
-topEl.addEventListener('click', () => window.scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' }));
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+const world = new THREE.Scene(), museum = new THREE.Scene();
+world.background = new THREE.Color(0x0c1636); museum.background = new THREE.Color(0x0b100f);
+const cam = new THREE.PerspectiveCamera(60, 1, 0.05, 400);
+cam.rotation.order = 'YXZ';
 
-function loadImg(src) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; }); }
+const loader = new THREE.TextureLoader();
+const loadTex = src => new Promise((res, rej) => loader.load(src, t => { t.flipY = false; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); res(t); }, undefined, rej));
 
-/* ---------- WebGL ---------- */
-const VS = `attribute vec2 p; varying vec2 vUv; void main(){ vUv = vec2(p.x*.5+.5, .5-p.y*.5); gl_Position = vec4(p,0.,1.); }`;
-const FS = `precision highp float;
-varying vec2 vUv;
-uniform sampler2D uA; uniform sampler2D uB;
-uniform vec2 uRes; uniform vec3 uCamA; uniform vec3 uCamB;
-uniform float uAspA; uniform float uAspB; uniform float uT; uniform float uMix; uniform float uGold; uniform float uLive; uniform float uFall;
-uniform vec3 uStars[16]; uniform vec2 uLamp;
+const PAINT_FS = `
+precision highp float;
+varying vec2 vUv; varying float vDist; varying vec3 vWorld;
+uniform sampler2D uMap; uniform float uT; uniform float uLive; uniform float uA;
+uniform vec3 uStars[16]; uniform vec2 uLamp; uniform float uFog;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
   return mix(mix(hash(i),hash(i+vec2(1.,0.)),u.x), mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),u.x), u.y); }
 float fbm(vec2 p){ float v=0., a=.5; for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.03; a*=.5; } return v; }
-vec2 toWorld(vec3 cam){ vec2 s=(vUv-.5)*vec2(uRes.x/uRes.y,1.); return cam.xy + s*cam.z; }
 void main(){
-  float asp = uRes.x/uRes.y;
-  vec2 wa = toWorld(uCamA); vec2 ua = wa/vec2(uAspA,1.);
-  vec3 col;
-  if (ua.x>=0. && ua.x<=1. && ua.y>=0. && ua.y<=1.) {
-    float sky = smoothstep(.40,.30,ua.y)*smoothstep(.28,.40,ua.x);
-    vec2 dn = vec2(fbm(ua*14.+vec2(uT*.12,0.)), fbm(ua*14.+vec2(5.2,uT*.1))) - .5;
-    col = texture2D(uA, ua + dn*(.006*sky + .0012)*uLive).rgb;
-    for (int i=0;i<16;i++) {
-      vec3 s = uStars[i];
-      vec2 dv = (ua-s.xy)*vec2(uAspA,1.); float d = length(dv);
-      float tw = .7 + .3*sin(uT*2.1 + float(i)*1.9);
-      col += vec3(1.,.92,.55)*exp(-d*d/(s.z*s.z*1.2))*.45*tw*uLive;
-      float ang = atan(dv.y, dv.x);
-      float ring = exp(-pow((d - s.z*1.9)/(s.z*.5), 2.))*(.55 + .45*sin(ang*5. - uT*1.4 + float(i)));
-      col += vec3(.95,.92,.6)*ring*.28*tw*uLive;
-    }
-    vec2 lv = (ua-uLamp)*vec2(uAspA,1.);
-    float fl = .92 + .05*sin(uT*7.3) + .03*sin(uT*12.7);
-    col += vec3(1.,.72,.32)*exp(-dot(lv,lv)/(.0016*fl))*.35*uLive;
-    col += vec3(1.,.65,.3)*exp(-dot(lv,lv)/(.03*fl))*.10*uLive;
-  } else {
-    vec2 q = max(max(-wa, wa-vec2(uAspA,1.)), 0.); float e = max(q.x,q.y); float fw = .07;
-    if (e < fw) {
-      float t = e/fw;
-      float n = noise(wa*vec2(300.,30.))*.25 + noise(wa*vec2(30.,300.))*.25;
-      col = mix(vec3(.45,.30,.10), vec3(.95,.76,.36), (.55+.45*sin(t*3.14159))*.8 + n*.4);
-      if (t < .12) col *= .55;
-      if (t > .9) col *= .7;
-    } else {
-      float n = fbm(wa*18.)*.5 + fbm(wa*90.)*.25;
-      col = vec3(.085,.115,.105)*(.75+n);
-      vec2 o = wa - vec2(.035,.06);
-      vec2 sq = max(max(-o, o-vec2(uAspA,1.)), 0.);
-      col *= mix(.45, 1., smoothstep(fw, fw+.14, max(sq.x,sq.y)));
-      float spot = exp(-pow(length((wa-vec2(uAspA*.5,.35))*vec2(.55,.45)),2.)*1.2);
-      col += vec3(1.,.9,.7)*spot*.10*(.95+.05*sin(uT*1.7));
-      if (wa.y > 1.55) col = vec3(.16,.12,.09)*(.8+.4*noise(wa*vec2(8.,80.)));
+  vec2 ua = 1. - abs(1. - abs(vUv));   // mirror the painting past its edges
+  float sky = smoothstep(.40,.30,ua.y)*smoothstep(.28,.40,ua.x);
+  vec2 dn = vec2(fbm(ua*14.+vec2(uT*.12,0.)), fbm(ua*14.+vec2(5.2,uT*.1))) - .5;
+  vec3 col = texture2D(uMap, ua + dn*(.006*sky + .001)*uLive).rgb;
+  // up close, the street was painted with few strokes: re-pave it with strokes from the front of the canvas
+  if (uFog > .5 && vWorld.y < .05) {
+    float zo = -vWorld.z;
+    float mag = zo / max(distance(cameraPosition, vWorld), .1);
+    float w = smoothstep(1.4, 3.0, mag);
+    if (w > 0.) {
+      bool terrace = vWorld.x < .55 && zo > 5.5 && zo < 26.;
+      vec4 rect = terrace ? vec4(.17, .72, .23, .07) : vec4(.55, .88, .40, .11);
+      vec2 tile = terrace ? vec2(1.28, 2.0) : vec2(1.16, 1.0);
+      vec2 t = abs(fract(vec2(vWorld.x, vWorld.z)/tile*.5)*2. - 1.);
+      vec3 sw = texture2D(uMap, rect.xy + t*rect.zw).rgb;
+      col = mix(col, sw*(.75 + .5*dot(col, vec3(.33))), w*.8);
     }
   }
-  if (uMix > 0.) {
-    vec2 ub = toWorld(uCamB)/vec2(uAspB,1.);
-    vec2 dnb = vec2(noise(ub*20.+uT*.2), noise(ub*20.+3.+uT*.2)) - .5;
-    vec3 cb = texture2D(uB, clamp(ub + dnb*.0015*uLive, 0., 1.)).rgb;
-    float n = fbm(vec2(vUv.y*14., vUv.x*2.))*.3;
-    float edge = 1.15 - uMix*1.5;
-    col = mix(col, cb, smoothstep(edge-.05, edge+.05, vUv.x + n));
+  for (int i=0;i<16;i++) {
+    vec3 s = uStars[i];
+    vec2 dv = (ua-s.xy)*vec2(uA,1.); float d = length(dv);
+    float tw = .7 + .3*sin(uT*2.1 + float(i)*1.9);
+    col += vec3(1.,.92,.55)*exp(-d*d/(s.z*s.z*1.2))*.45*tw*uLive;
+    float ang = atan(dv.y, dv.x);
+    col += vec3(.95,.92,.6)*exp(-pow((d - s.z*1.9)/(s.z*.5), 2.))*(.55 + .45*sin(ang*5. - uT*1.4 + float(i)))*.28*tw*uLive;
   }
-  if (uFall > 0.) {
-    float sx = floor(vUv.x*90.);
-    float lane = hash(vec2(sx, 3.1));
-    float y = fract(vUv.y*1.5 + uT*(.5+lane) + lane*7.);
-    float streak = step(.82, lane) * smoothstep(.0, .25, y) * smoothstep(.45, .25, y);
-    float w = 1. - abs(fract(vUv.x*90.)-.5)*2.;
-    col += vec3(1.,.9,.55)*streak*pow(w, 6.)*.55*uFall;
-  }
-  if (uGold > 0.) {
-    float r = length((vUv-.5)*vec2(asp,1.));
-    col = mix(col, col*vec3(1.08,1.,.86) + vec3(.25,.17,.06)*(1.-r), uGold*.8);
-  }
-  float v = length(vUv-.5); col *= 1. - .64*v*v;
+  vec2 lv = (ua-uLamp)*vec2(uA,1.);
+  float fl = .92 + .05*sin(uT*7.3) + .03*sin(uT*12.7);
+  col += vec3(1.,.72,.32)*exp(-dot(lv,lv)/(.0016*fl))*.35*uLive;
+  col += vec3(1.,.65,.3)*exp(-dot(lv,lv)/(.03*fl))*.10*uLive;
+  col = mix(col, vec3(.06,.09,.24), smoothstep(35., 95., vDist)*.35*uFog);
   gl_FragColor = vec4(col, 1.);
 }`;
+const PAINT_VS = `
+varying vec2 vUv; varying float vDist; varying vec3 vWorld;
+void main(){ vUv = uv; vec4 wp = modelMatrix*vec4(position,1.); vWorld = wp.xyz; vec4 mv = viewMatrix*wp; vDist = -mv.z; gl_Position = projectionMatrix*mv; }`;
 
-let gl, isGL2 = false, prog, U = {};
-function setupGL(imA, imB) {
-  gl = cv.getContext('webgl2', { antialias: false }); isGL2 = !!gl;
-  if (!gl) gl = cv.getContext('webgl', { antialias: false });
-  if (!gl) return false;
-  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
-  prog = gl.createProgram();
-  gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
-  gl.linkProgram(prog);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
-  gl.useProgram(prog);
-  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  ['uA', 'uB', 'uRes', 'uCamA', 'uCamB', 'uAspA', 'uAspB', 'uT', 'uMix', 'uGold', 'uLive', 'uFall', 'uStars', 'uLamp'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
-  const tex = (im, unit) => {
-    const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, im);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    if (isGL2) { gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); }
-    else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  };
-  tex(imA, 0); tex(imB, 1);
-  gl.uniform1i(U.uA, 0); gl.uniform1i(U.uB, 1);
-  gl.uniform1f(U.uAspA, ASP_A); gl.uniform1f(U.uAspB, ASP_B);
-  gl.uniform3fv(U.uStars, new Float32Array(STARS.flat())); gl.uniform2fv(U.uLamp, new Float32Array(LAMP));
-  return true;
+const shared = {
+  uT: { value: 0 }, uLive: { value: RM ? .25 : 1 }, uA: { value: A },
+  uStars: { value: STARS.map(s => new THREE.Vector3(s[0], s[1], s[2])) },
+  uLamp: { value: new THREE.Vector2(LAMP[0], LAMP[1]) }
+};
+
+function sheet(depthFn, keep, tex) {
+  // a dense sheet, every vertex pushed out along the painter's line of sight to its depth
+  const U0 = -0.55, U1 = 1.55, V0 = -0.3, V1 = 1.18, NU = 230, NV = 230;
+  const pos = [], uvs = [], ok = [];
+  for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
+    const u = lerp(U0, U1, i / NU), v = lerp(V0, V1, j / NV), z = depthFn(u, v), [rx, ry] = rayOf(u, v);
+    pos.push(rx * z, EYE + ry * z, -z); uvs.push(u, v); ok.push(z > 0 ? 1 : 0);
+  }
+  const idx = [];
+  for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) {
+    const a = j * (NU + 1) + i, b = a + 1, c = a + NU + 1, d = c + 1;
+    if (keep(ok[a], ok[b], ok[c], ok[d])) idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
+  const m = new THREE.ShaderMaterial({ vertexShader: PAINT_VS, fragmentShader: PAINT_FS, side: THREE.DoubleSide,
+    uniforms: Object.assign({ uMap: { value: tex }, uFog: { value: 1 } }, shared) });
+  return new THREE.Mesh(g, m);
+}
+function buildWorld(tex) {
+  world.add(sheet(backDepth, () => true, tex));
+  world.add(sheet(awningDepth, (a, b, c, d) => a && b && c && d, tex));
 }
 
-let cw = 0, ch = 0;
+// the people, standing up like paper dolls cut from the canvas
+const dolls = [];
+// people on the street stroll toward you: [index, metres walked, x where they pass]
+const WALKERS = { 4: [10, .6], 5: [10.4, 1.5], 6: [11.5, .95], 7: [13, .3] };
+function buildDolls(tex) {
+  for (const [u0, v0, u1, v1] of PEOPLE) {
+    const zp = EYE / ((v1 - VP[1]) / F);
+    const cx = (u0 + u1) / 2, [rxc] = rayOf(cx, v1), [, ryt] = rayOf(cx, v0);
+    const w = (u1 - u0) * A / F * zp, top = EYE + ryt * zp;
+    const g = new THREE.PlaneGeometry(w, top);
+    const m = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      uniforms: { uMap: { value: tex }, uRect: { value: new THREE.Vector4(u0, v0, u1 - u0, v1 - v0) }, uT: shared.uT },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+      fragmentShader: `precision highp float; varying vec2 vUv; uniform sampler2D uMap; uniform vec4 uRect;
+        void main(){ vec2 l = vec2(vUv.x, 1.-vUv.y);
+          vec3 c = texture2D(uMap, uRect.xy + l*uRect.zw).rgb;
+          float d = length((l - vec2(.5,.55))*vec2(2.,2.));
+          float a = 1. - smoothstep(.7, 1., d);
+          a *= smoothstep(0., .06, 1.-l.y) + step(.9, l.y);
+          gl_FragColor = vec4(c, a); }`
+    });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.position.set(Math.max(rxc * zp, -1.95), top / 2, -zp);
+    mesh.userData = { x0: mesh.position.x, y0: mesh.position.y, z0: mesh.position.z, ph: Math.random() * 6 };
+    world.add(mesh); dolls.push(mesh);
+  }
+}
+
+// warm flecks of paint drifting in the air, so the space reads as space
+let flecks;
+function buildFlecks() {
+  const n = 420, p = new Float32Array(n * 3), ph = new Float32Array(n);
+  for (let i = 0; i < n; i++) { p[i * 3] = lerp(-2.2, 4.5, Math.random()); p[i * 3 + 1] = lerp(.2, 7, Math.random()); p[i * 3 + 2] = lerp(-40, -1.5, Math.random()); ph[i] = Math.random() * 6.28; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.BufferAttribute(ph, 1));
+  const m = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    uniforms: { uT: shared.uT, uPx: { value: 1 }, uOn: { value: 0 } },
+    vertexShader: `attribute float ph; uniform float uT; uniform float uPx; varying float vA;
+      void main(){ vec3 p = position + vec3(sin(uT*.4+ph)*.25, sin(uT*.3+ph*2.)*.18, cos(uT*.35+ph)*.25);
+        vec4 mv = modelViewMatrix*vec4(p,1.); gl_Position = projectionMatrix*mv;
+        gl_PointSize = uPx*(26./-mv.z); vA = .55+.45*sin(uT*1.7+ph*3.); }`,
+    fragmentShader: `uniform float uOn; varying float vA; void main(){ float d = length(gl_PointCoord-.5); float a = smoothstep(.5,0.,d);
+      gl_FragColor = vec4(vec3(1.,.82,.45)*a*vA*uOn, 1.); }`
+  });
+  flecks = new THREE.Points(g, m); world.add(flecks);
+}
+
+// Vincent, painted into the terrace
+let vincent;
+const VG = new THREE.Vector3(-1.3, 1.42, -9.4);
+function buildVincent(tex) {
+  const g = new THREE.PlaneGeometry(1.0, 1.0 / ASP_B);
+  const m = new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false,
+    uniforms: { uMap: { value: tex }, uOp: { value: 0 }, uT: shared.uT },
+    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+    fragmentShader: `precision highp float; varying vec2 vUv; uniform sampler2D uMap; uniform float uOp; uniform float uT;
+      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
+      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
+        return mix(mix(hash(i),hash(i+vec2(1.,0.)),u.x), mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),u.x), u.y); }
+      void main(){ vec2 uv = vec2(vUv.x, 1.-vUv.y);
+        vec2 dn = vec2(noise(uv*20.+uT*.2), noise(uv*20.+3.+uT*.2)) - .5;
+        vec3 c = texture2D(uMap, clamp(uv + dn*.0015, 0., 1.)).rgb;
+        float d = length((uv - vec2(.5,.5))*vec2(2.,1.65));
+        float edge = .78 + (noise(vec2(atan(uv.y-.5, uv.x-.5)*6., uT*.3))-.5)*.18;
+        float a = 1. - smoothstep(edge-.12, edge, d);
+        gl_FragColor = vec4(c, a*uOp); }`
+  });
+  vincent = new THREE.Mesh(g, m); vincent.position.copy(VG); world.add(vincent);
+}
+
+// the museum: dark wall, gilded frame, and the painting hanging on the painter's own picture plane
+function buildMuseum(tex) {
+  const ctx2 = document.createElement('canvas'); ctx2.width = 512; ctx2.height = 512;
+  const c = ctx2.getContext('2d'); c.fillStyle = '#141b19'; c.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 9000; i++) { c.fillStyle = `rgba(${30 + Math.random() * 25},${40 + Math.random() * 25},${36 + Math.random() * 20},.35)`; c.fillRect(Math.random() * 512, Math.random() * 512, 2, 6 + Math.random() * 8); }
+  const g = c.createRadialGradient(256, 150, 10, 256, 220, 300); g.addColorStop(0, 'rgba(255,230,180,.22)'); g.addColorStop(1, 'rgba(255,230,180,0)');
+  c.fillStyle = g; c.fillRect(0, 0, 512, 512);
+  const wallTex = new THREE.CanvasTexture(ctx2);
+  const cx = (0.5 - VP[0]) * A, cy = -(0.5 - VP[1]);
+  const wall = new THREE.Mesh(new THREE.PlaneGeometry(9, 6), new THREE.MeshBasicMaterial({ map: wallTex }));
+  wall.position.set(cx, cy + .9, -F - .02); museum.add(wall);
+  const painting = new THREE.Mesh(new THREE.PlaneGeometry(A, 1), new THREE.ShaderMaterial({
+    vertexShader: PAINT_VS, fragmentShader: PAINT_FS,
+    uniforms: Object.assign({ uMap: { value: tex }, uFog: { value: 0 } }, shared)
+  }));
+  // flip v so painting uv matches the world sheet
+  const uv = painting.geometry.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
+  painting.position.set(cx, cy, -F); museum.add(painting);
+  const gold = new THREE.MeshBasicMaterial({ color: 0xc9993c }), goldDk = new THREE.MeshBasicMaterial({ color: 0x8f6420 });
+  const t = .07;
+  [[0, .5 + t / 2, A + 2 * t, t, gold], [0, -.5 - t / 2, A + 2 * t, t, goldDk], [-A / 2 - t / 2, 0, t, 1, gold], [A / 2 + t / 2, 0, t, 1, goldDk]].forEach(([x, y, w, h, m]) => {
+    const b = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); b.position.set(cx + x, cy + y, -F + .005); museum.add(b);
+  });
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(A + .3, 1.3), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: .45 }));
+  shadow.position.set(cx + .04, cy - .06, -F - .01); museum.add(shadow);
+}
+
+/* ---------- camera ---------- */
+// asymmetric frustum that frames the painting exactly as it hangs; blends into an ordinary lens once inside
+function startWindow(aspect) {
+  let H = A / aspect; if (H > 1) H = 1;
+  const W = H * aspect;
+  const vc = clamp(0.42, H / 2, 1 - H / 2);
+  const xl = (0.5 - VP[0]) * A - W / 2, yt = (vc - VP[1]) - H / 2;
+  return [xl / F, (xl + W) / F, -yt / F, -(yt + H) / F];
+}
+function setFrustum(aspect, blend, fovDeg) {
+  const s = startWindow(aspect), hh = Math.tan(fovDeg / 2 * DEG), hw = hh * aspect;
+  const l = lerp(s[0], -hw, blend), r = lerp(s[1], hw, blend), t = lerp(s[2], hh, blend), b = lerp(s[3], -hh, blend);
+  const n = cam.near;
+  cam.projectionMatrix.makePerspective(l * n, r * n, t * n, b * n, n, cam.far);
+  cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+}
+
+// the walk: [scroll, x, y, z, yaw (deg, + looks left), pitch (deg), lens blend]
+const PATH = [
+  [0.13, 0.0, 1.60, 0.0, 0, 0, 0],       // standing where the painter stood
+  [0.21, 0.0, 1.60, -2.2, 0, 4, 1],      // one step in; the street opens up
+  [0.30, -0.2, 1.60, -3.4, 40, 1, 1],    // turn left: the café
+  [0.40, -0.35, 1.60, -5.4, 22, 0, 1],   // walk along the terrace
+  [0.48, -0.35, 1.60, -6.4, -10, 0, 1],  // look ahead: people walking this way
+  [0.58, -0.35, 1.60, -7.0, -6, -1, 1],  // they pass by
+  [0.66, -0.40, 1.60, -7.1, 40, -3, 1],  // back to the terrace
+  [0.80, -0.95, 1.50, -8.6, 40, -2, 1],  // walk up to the painter
+  [0.92, -1.12, 1.46, -8.95, 40, -1, 1], // face to face
+  [1.00, -1.13, 1.46, -8.97, 40, -1, 1]
+];
+function samplePath(p) {
+  if (p <= PATH[0][0]) return PATH[0].slice(1);
+  for (let i = 0; i < PATH.length - 1; i++) {
+    const a = PATH[i], b = PATH[i + 1];
+    if (p <= b[0]) { const t = ease((p - a[0]) / (b[0] - a[0])); return a.slice(1).map((v, k) => lerp(v, b[k + 1], t)); }
+  }
+  return PATH[PATH.length - 1].slice(1);
+}
+
+const CAPS = [
+  [0.00, 0.05, '閉館後の美術館。一枚の絵だけが、まだ光っている。'],
+  [0.06, 0.12, '近づくと、絵の中から夜風が吹いてきた。'],
+  [0.15, 0.23, '——絵の中に、入った。'],
+  [0.25, 0.33, '左を向くと、黄色く光るカフェテラス。'],
+  [0.35, 0.43, 'お店にそって、石畳を歩いていく。'],
+  [0.45, 0.57, '夜の散歩をする人たちが、こちらへ歩いてきて……すれちがう。'],
+  [0.61, 0.70, 'テラスの奥に、麦わら帽子の男がいた。'],
+  [0.76, 0.85, '「やあ、きみも絵の中に来たのかい？」'],
+  [0.86, 0.94, '「ぼくはフィンセント。この夜を描いているところさ」']
+];
+
+/* ---------- DOM + input ---------- */
+const capEl = document.getElementById('cap'), hintEl = document.getElementById('hint');
+const bonEl = document.getElementById('bonjour'), railEl = document.querySelector('#rail i');
+const topEl = document.getElementById('top'), glowEl = document.getElementById('glow');
+topEl.addEventListener('click', () => window.scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' }));
+let target = 0, sp = 0, capIdx = -2, mx = 0, my = 0, smx = 0, smy = 0;
+function readScroll() { const max = document.documentElement.scrollHeight - window.innerHeight; target = max > 0 ? clamp(window.scrollY / max) : 0; }
+window.addEventListener('scroll', readScroll, { passive: true });
+window.addEventListener('pointermove', e => { mx = e.clientX / window.innerWidth * 2 - 1; my = e.clientY / window.innerHeight * 2 - 1; }, { passive: true });
+
 function resize() {
-  cw = window.innerWidth; ch = window.innerHeight;
-  const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
-  if (gl) gl.viewport(0, 0, cv.width, cv.height);
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  if (flecks) flecks.material.uniforms.uPx.value = renderer.getPixelRatio() * window.innerHeight / 900 * 6;
 }
 window.addEventListener('resize', resize);
-
-/* ---------- scroll-driven loop ---------- */
-let target = 0, sp = 0, last = performance.now() / 1000, capIdx = -2;
-function readScroll() {
-  const max = document.documentElement.scrollHeight - window.innerHeight;
-  target = max > 0 ? clamp(window.scrollY / max) : 0;
-}
-window.addEventListener('scroll', readScroll, { passive: true });
 
 function updateDom(p) {
   let idx = -1;
   CAPS.forEach((c, i) => { if (p >= c[0] && p <= c[1]) idx = i; });
   if (idx !== capIdx) {
-    capIdx = idx;
-    capEl.classList.remove('on');
-    if (idx >= 0) { capEl.textContent = CAPS[idx][2]; capEl.classList.toggle('low', CAPS[idx][3]); void capEl.offsetWidth; capEl.classList.add('on'); }
+    capIdx = idx; capEl.classList.remove('on');
+    if (idx >= 0) { capEl.textContent = CAPS[idx][2]; void capEl.offsetWidth; capEl.classList.add('on'); }
   }
   hintEl.style.opacity = p < .03 ? 1 : 0;
-  bonEl.classList.toggle('on', p > .96);
+  bonEl.classList.toggle('on', p > .955);
+  glowEl.style.opacity = smooth(.93, 1, p).toFixed(3);
   const end = p > .975; topEl.hidden = !end && !topEl.classList.contains('on'); topEl.classList.toggle('on', end);
   railEl.style.height = (p * 100).toFixed(1) + '%';
 }
 
+let last = performance.now() / 1000;
 function frame() {
   const now = performance.now() / 1000, dt = Math.min(.05, now - last); last = now;
-  sp += (target - sp) * (1 - Math.exp(-dt * (RM ? 12 : 4.5)));
+  sp += (target - sp) * (1 - Math.exp(-dt * (RM ? 12 : 4)));
   if (Math.abs(target - sp) < 1e-5) sp = target;
-  const sa = cw / ch;
-  const inside = smooth(.11, .18, sp);
-  const camA = fitInside(sample(KA, sp), ASP_A, sa, inside);
-  const camB = fitInside(sample(KB, sp), ASP_B, sa, 1);
-  gl.uniform2f(U.uRes, cv.width, cv.height);
-  gl.uniform3f(U.uCamA, camA[0], camA[1], camA[2]);
-  gl.uniform3f(U.uCamB, camB[0], camB[1], camB[2]);
-  gl.uniform1f(U.uT, now % 1000);
-  gl.uniform1f(U.uMix, smooth(.80, .88, sp));
-  gl.uniform1f(U.uFall, smooth(.28, .31, sp) * (1 - smooth(.40, .46, sp)) * (RM ? 0 : 1));
-  gl.uniform1f(U.uGold, smooth(.92, 1, sp));
-  gl.uniform1f(U.uLive, RM ? .25 : 1);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  smx += (mx - smx) * (1 - Math.exp(-dt * 3)); smy += (my - smy) * (1 - Math.exp(-dt * 3));
+  shared.uT.value = now % 1000;
+  const aspect = window.innerWidth / window.innerHeight;
+  const inside = sp >= PATH[0][0];
+  if (!inside) {
+    // museum: back away from the wall, then walk up until the frame vanishes past the edges
+    const k = ease(clamp(sp / PATH[0][0]));
+    cam.position.set(0, lerp(-0.05, 0, k), lerp(3.4, 0, k));
+    cam.rotation.set(0, 0, 0);
+    setFrustum(aspect, 0, 60);
+    renderer.render(museum, cam);
+  } else {
+    const [x, y, z, yaw, pitch, blend] = samplePath(sp);
+    const look = RM ? 0 : smooth(.13, .2, sp);
+    cam.position.set(x, y, z);
+    let yw = yaw * DEG - smx * .07 * look, pt = pitch * DEG - smy * .04 * look;
+    if (sp > .7) { // turn the head to keep Vincent in view as you approach
+      const dx = VG.x - x, dz = VG.z - z, dy = VG.y + .08 - y;
+      const ty = Math.atan2(-dx, -dz), tp = Math.atan2(dy, Math.hypot(dx, dz));
+      const w = smooth(.7, .8, sp); yw = lerp(yw, ty, w); pt = lerp(pt, tp, w);
+    }
+    cam.rotation.set(pt, yw, 0);
+    setFrustum(aspect, blend, 62);
+    vincent.material.uniforms.uOp.value = smooth(.58, .66, sp);
+    vincent.rotation.y = Math.atan2(cam.position.x - VG.x, cam.position.z - VG.z);
+    dolls.forEach((d, i) => {
+      const w = WALKERS[i], ud = d.userData;
+      if (w) {
+        const k = smooth(.38, .64, sp);
+        d.position.set(lerp(ud.x0, w[1], smooth(0, .6, k)), ud.y0 + (RM ? 0 : Math.abs(Math.sin(now * 4 + ud.ph)) * .05 * Math.sin(k * Math.PI)), ud.z0 + w[0] * k);
+      }
+      d.rotation.y = Math.atan2(cam.position.x - d.position.x, cam.position.z - d.position.z) * smooth(.15, .3, sp);
+    });
+    flecks.material.uniforms.uOn.value = smooth(.14, .24, sp);
+    renderer.render(world, cam);
+  }
   updateDom(sp);
   requestAnimationFrame(frame);
 }
 
-Promise.all([loadImg('cafe-terrace-at-night.jpg'), loadImg('self-portrait-straw-hat.jpg')]).then(([a, b]) => {
-  resize();
-  let ok = false;
-  try { ok = setupGL(a, b); } catch (e) { console.error(e); ok = false; }
-  if (!ok) {
-    const f = document.getElementById('fallback'); f.src = a.src; f.hidden = false; cv.hidden = true;
-    loadEl.classList.add('gone'); return;
-  }
-  readScroll(); sp = target;
+Promise.all([loadTex('cafe-terrace-at-night.jpg'), loadTex('self-portrait-straw-hat.jpg')]).then(([a, b]) => {
+  a.minFilter = THREE.LinearMipmapLinearFilter; b.minFilter = THREE.LinearMipmapLinearFilter;
+  a.wrapS = a.wrapT = THREE.MirroredRepeatWrapping;
+  buildWorld(a); buildDolls(a); buildFlecks(); buildVincent(b); buildMuseum(a);
+  resize(); readScroll(); sp = target;
   loadEl.classList.add('gone');
   requestAnimationFrame(frame);
-}).catch(() => { loadEl.textContent = '絵を読み込めませんでした。ページを再読み込みしてください。'; });
+}).catch(e => { console.error(e); loadEl.textContent = '絵を読み込めませんでした。ページを再読み込みしてください。'; });
 })();
 </script>
