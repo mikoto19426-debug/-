@@ -126,3 +126,59 @@ ol.small { padding-left: 1.3em; }
 ol.small li { margin-bottom: 4px; }
 code { font-size: .8rem; background: var(--bg); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
 a { color: var(--accent); }
+
+/* ---------- レジ ---------- */
+label.inline { display: inline-flex; align-items: center; gap: 6px; margin: 4px 0 0; color: var(--text); }
+label.inline > input { display: inline; width: auto; margin: 0; }
+.menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-top: 12px; }
+.menu-btn {
+  position: relative; min-height: 78px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between;
+  text-align: left; padding: 10px 12px; border-radius: 12px; font-size: 1rem; font-weight: 700;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+}
+.menu-btn:active:not(:disabled) { transform: scale(.97); background: var(--bg); }
+.menu-btn:disabled { opacity: .45; cursor: not-allowed; }
+.menu-btn .mname { overflow-wrap: anywhere; }
+.menu-btn .mprice { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; font-size: .9rem; }
+.menu-btn .mcount {
+  position: absolute; top: -7px; right: -7px; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 13px;
+  background: var(--accent); color: var(--accent-text); font-size: .85rem; line-height: 26px; text-align: center;
+}
+.menu-grid .empty { grid-column: 1 / -1; }
+.cart-line { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.cart-line .lname { font-weight: 600; overflow-wrap: anywhere; }
+.cart-line .lsub { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.cart-line .lunit { font-size: .8rem; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 4px; }
+.stepper button { width: 42px; height: 42px; padding: 0; font-size: 1.3rem; line-height: 1; touch-action: manipulation; }
+.stepper input { width: 60px; height: 42px; text-align: center; font-size: 1.05rem; padding: 4px; }
+.stepper .rm { width: auto; padding: 0 10px; font-size: .8rem; color: var(--muted); margin-left: 4px; }
+.cart-total { display: flex; justify-content: space-between; align-items: baseline; font-size: 1.5rem; font-weight: 800; padding: 10px 0 4px; }
+.pos-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+.pos-fields label { margin-bottom: 6px; }
+.quick button { flex: 1; padding: 8px 0; }
+.change { font-size: 1.15rem; margin: 10px 0; font-weight: 600; }
+button.big { flex: 1; padding: 14px; font-size: 1.1rem; }
+.done { text-align: center; border-color: var(--accent); }
+.done .big-ticket { font-size: 2.6rem; font-weight: 800; color: var(--accent); line-height: 1.2; }
+.order { display: grid; grid-template-columns: 58px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.order:last-child { border-bottom: 0; }
+.order .ticket { font-size: 1.5rem; font-weight: 800; text-align: center; border: 2px solid var(--accent); color: var(--accent); border-radius: 10px; padding: 2px 0; font-variant-numeric: tabular-nums; }
+.order .ticket.none { font-size: .9rem; border-style: dashed; padding: 8px 0; }
+.order .oitems { overflow-wrap: anywhere; }
+.order .oacts { display: flex; flex-direction: column; gap: 4px; }
+.order .oacts button { padding: 6px 10px; font-size: .85rem; }
+.order.served { opacity: .5; }
+.order.served .ticket { border-color: var(--line); color: var(--muted); }
+.menu-row { display: grid; grid-template-columns: 1fr 88px auto auto; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.menu-row input[type=text], .menu-row input[type=number] { min-width: 0; width: 100%; }
+.menu-row button { padding: 6px 8px; font-size: .8rem; }
+.menu-add { display: grid; grid-template-columns: 1fr 88px auto; gap: 6px; margin: 12px 0; }
+.menu-add input { min-width: 0; }
+#menuEdit[open] summary { margin-bottom: 8px; }
+@media (max-width: 420px) {
+  nav#tabs { padding: 8px 8px; gap: 2px; }
+  nav#tabs button { font-size: .85rem; }
+  .menu-row { grid-template-columns: 1fr 72px auto; }
+  .menu-row .del { grid-column: 3; }
+}

@@ -50,8 +50,10 @@ const getAllTx = () => reqP(store('tx').getAll());
 const putTx = (t) => reqP(store('tx', 'readwrite').put(t));
 
 // ---------- データ形式 ----------
-// settings（同期される）: { accounts: [{id,name,opening,updatedAt,deleted?}], categories: [{id,kind,name,updatedAt,deleted?}] }
-// local（この端末だけ）: { lastBackup, lastSync, clientId, fileId, token, tokenExp }
+// settings（同期される）: { accounts: [{id,name,opening,updatedAt,deleted?}], categories: [{id,kind,name,updatedAt,deleted?}],
+//                          menu: [{id,name,price,soldOut?,createdAt,updatedAt,deleted?}] }
+// local（この端末だけ）: { lastBackup, lastSync, clientId, fileId, token, tokenExp, posAccount }
+// レジの注文は type:'income' の取引として保存し、items（明細）・ticket（整理券番号）・served（お渡し済み）を持つ
 function normalizeSettings(s) {
   s = s || {};
   let categories = s.categories;
@@ -64,7 +66,8 @@ function normalizeSettings(s) {
     }
   }
   const accounts = (Array.isArray(s.accounts) ? s.accounts : structuredClone(DEFAULT_ACCOUNTS)).map((a) => ({ updatedAt: 0, ...a }));
-  return { accounts, categories };
+  const menu = (Array.isArray(s.menu) ? s.menu : []).map((m) => ({ updatedAt: 0, ...m }));
+  return { accounts, categories, menu };
 }
 function normalizeTx(t) {
   return { ...t, updatedAt: t.updatedAt ?? t.createdAt ?? 0 };
@@ -96,6 +99,7 @@ let allTx = []; // 削除記録を含む全取引
 let txs = [];   // 表示用（削除済みを除く、新しい順）
 
 const accounts = () => settings.accounts.filter((a) => !a.deleted);
+const menuItems = () => settings.menu.filter((m) => !m.deleted).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 const categories = (kind) => settings.categories.filter((c) => c.kind === kind && !c.deleted).map((c) => c.name);
 const saveSettings = () => reqP(store('meta', 'readwrite').put(settings, 'settings'));
 const saveLocal = () => reqP(store('meta', 'readwrite').put(local, 'local'));
@@ -201,6 +205,8 @@ form.addEventListener('submit', async (e) => {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
+  // レジの注文を手で直した場合も、明細・整理券番号は残す
+  if (existing?.pos && type === 'income') Object.assign(t, { pos: true, items: existing.items, ticket: existing.ticket, served: existing.served });
   try {
     await writeTx(t);
   } catch (err) {
@@ -337,6 +343,17 @@ function renderReport() {
   for (const t of list) if (t.type !== 'transfer') byCat[t.type][t.category] = (byCat[t.type][t.category] ?? 0) + t.amount;
   $('#byCatExpense').innerHTML = barsHTML(byCat.expense, 'exp');
   $('#byCatIncome').innerHTML = barsHTML(byCat.income, 'inc');
+  const byMenu = {};
+  for (const t of list) for (const l of t.items || []) {
+    const m = (byMenu[l.name] ??= { qty: 0, amount: 0 });
+    m.qty += l.qty;
+    m.amount += l.qty * l.price;
+  }
+  const menuRows = Object.entries(byMenu).sort((a, b) => b[1].amount - a[1].amount);
+  $('#byMenu').innerHTML = menuRows.length
+    ? `<table><thead><tr><th>メニュー</th><th>個数</th><th>売上</th></tr></thead><tbody>${menuRows.map(([k, v]) =>
+      `<tr><td>${esc(k)}</td><td>${v.qty.toLocaleString('ja-JP')}</td><td>${yen(v.amount)}</td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty">レジの売上はありません</div>';
 
   const showMonthly = mode === 'year';
   $('#monthlyTitle').hidden = $('#monthly').hidden = !showMonthly;
@@ -385,6 +402,7 @@ async function renderStorageInfo() {
 
 function render() {
   const active = $('.tab.active').id.slice(4);
+  if (active === 'pos') renderPos();
   if (active === 'entry') renderRecent();
   if (active === 'list') renderList();
   if (active === 'report') renderReport();
@@ -394,6 +412,289 @@ function render() {
 ['#listMonth', '#listType', '#listQuery', '#reportMode', '#reportMonth', '#reportYear'].forEach((s) =>
   $(s).addEventListener('input', render));
 
+// ---------- レジ ----------
+const cart = new Map(); // menuId -> 個数
+let ticketEdited = false; // 整理券番号を手で変えたか
+
+const isOrder = (t) => t.pos && t.date === today();
+const todayOrders = () => txs.filter(isOrder).sort((a, b) => b.createdAt - a.createdAt);
+function nextTicket() {
+  const nums = todayOrders().map((o) => o.ticket).filter(Number.isFinite);
+  return nums.length ? Math.max(...nums) + 1 : 1;
+}
+function posAccountId() {
+  const accs = accounts();
+  return accs.find((a) => a.id === local.posAccount)?.id ?? accs.find((a) => a.id === 'cash')?.id ?? accs[0]?.id;
+}
+function cartLines() {
+  const byId = new Map(settings.menu.map((m) => [m.id, m]));
+  return [...cart].filter(([id, q]) => q > 0 && byId.has(id)).map(([id, qty]) => {
+    const m = byId.get(id);
+    return { menuId: id, name: m.name, price: Number(m.price) || 0, qty };
+  });
+}
+const cartTotal = () => cartLines().reduce((s, l) => s + l.price * l.qty, 0);
+
+function renderPos() {
+  renderMenuGrid();
+  renderCart();
+  renderOrders();
+  renderMenuEdit();
+  if (!ticketEdited && document.activeElement !== $('#ticketNo')) $('#ticketNo').value = nextTicket();
+}
+function renderMenuGrid() {
+  const items = menuItems();
+  $('#menuGrid').innerHTML = items.length
+    ? items.map((m) => {
+      const q = cart.get(m.id);
+      return `<button type="button" class="menu-btn" data-menu="${esc(m.id)}" ${m.soldOut ? 'disabled' : ''}>
+        <span class="mname">${esc(m.name)}</span>
+        <span class="mprice">${m.soldOut ? '売り切れ' : yen(m.price)}</span>
+        ${q ? `<span class="mcount">${q}</span>` : ''}
+      </button>`;
+    }).join('')
+    : '<div class="empty">メニューがまだありません。上の「メニューの追加・値段の設定」から登録してください。</div>';
+  if (!items.length) $('#menuEdit').open = true;
+}
+function renderCart() {
+  const lines = cartLines();
+  $('#cartLines').innerHTML = lines.length
+    ? lines.map((l) => `<div class="cart-line" data-line="${esc(l.menuId)}">
+        <div><div class="lname">${esc(l.name)}</div><div class="lunit">${yen(l.price)} × ${l.qty}</div></div>
+        <div class="lsub">${yen(l.price * l.qty)}</div>
+        <div class="stepper">
+          <button type="button" data-dec aria-label="減らす">−</button>
+          <input type="number" class="qty" min="0" step="1" inputmode="numeric" value="${l.qty}" aria-label="${esc(l.name)}の個数">
+          <button type="button" data-inc aria-label="増やす">＋</button>
+          <button type="button" class="rm" data-rm>削除</button>
+        </div>
+      </div>`).join('')
+    : '<div class="empty">メニューをタップして追加</div>';
+  updateTotals();
+}
+function updateTotals() {
+  const total = cartTotal();
+  $('#cartTotal').textContent = yen(total);
+  const paidRaw = $('#paid').value;
+  const paid = Number(paidRaw);
+  const el = $('#change');
+  if (paidRaw === '' || !total) { el.textContent = '—'; el.className = 'num'; }
+  else if (paid < total) { el.textContent = `${yen(total - paid)} 足りません`; el.className = 'num exp'; }
+  else { el.textContent = yen(paid - total); el.className = 'num inc'; }
+  $('#checkout').disabled = !total;
+}
+function renderOrders() {
+  const all = todayOrders();
+  const hide = $('#hideServed').checked;
+  const list = hide ? all.filter((o) => !o.served) : all;
+  const waiting = all.filter((o) => !o.served).length;
+  $('#todayStats').textContent = all.length ? `${all.length}件 ・ ${yen(all.reduce((s, o) => s + o.amount, 0))} ・ 未お渡し ${waiting}件` : '';
+  $('#orders').innerHTML = list.length
+    ? `<div class="card">${list.map((o) => `<div class="order ${o.served ? 'served' : ''}">
+        <div class="ticket ${o.ticket ? '' : 'none'}">${o.ticket ?? '番号なし'}</div>
+        <div class="oitems">${esc((o.items || []).map((l) => `${l.name}×${l.qty}`).join('、'))}
+          <div class="meta">${new Date(o.createdAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} ・ ${yen(o.amount)}</div></div>
+        <div class="oacts">
+          <button type="button" data-serve="${esc(o.id)}" class="${o.served ? '' : 'primary'}">${o.served ? '戻す' : 'お渡し'}</button>
+          <button type="button" data-act="del" data-id="${esc(o.id)}">取消</button>
+        </div>
+      </div>`).join('')}</div>`
+    : `<div class="empty">${all.length ? 'お渡し待ちの注文はありません' : '今日の注文はまだありません'}</div>`;
+}
+function renderMenuEdit() {
+  // 入力中に書き換えないようにする
+  if ($('#menuList').contains(document.activeElement)) return;
+  $('#menuList').innerHTML = menuItems().map((m) => `<div class="menu-row" data-mid="${esc(m.id)}">
+      <input type="text" class="m-name" value="${esc(m.name)}" maxlength="40" aria-label="メニュー名">
+      <input type="number" class="m-price" value="${Number(m.price) || 0}" min="0" step="1" inputmode="numeric" aria-label="値段">
+      <label class="inline"><input type="checkbox" class="m-sold" ${m.soldOut ? 'checked' : ''}>売切</label>
+      <button type="button" class="del" data-mdel>削除</button>
+    </div>`).join('');
+  const accs = accounts().map((a) => ({ value: a.id, label: a.name }));
+  fillSelect($('#posAccount'), accs, posAccountId());
+}
+
+// メニューをタップ → 1個追加
+$('#menuGrid').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-menu]');
+  if (!b) return;
+  cart.set(b.dataset.menu, (cart.get(b.dataset.menu) || 0) + 1);
+  navigator.vibrate?.(10);
+  $('#lastOrder').hidden = true;
+  renderMenuGrid();
+  renderCart();
+});
+// ＋／−／削除
+$('#cartLines').addEventListener('click', (e) => {
+  const line = e.target.closest('[data-line]');
+  if (!line) return;
+  const id = line.dataset.line;
+  const q = cart.get(id) || 0;
+  if (e.target.closest('[data-inc]')) cart.set(id, q + 1);
+  else if (e.target.closest('[data-dec]')) { if (q <= 1) cart.delete(id); else cart.set(id, q - 1); }
+  else if (e.target.closest('[data-rm]')) cart.delete(id);
+  else return;
+  renderMenuGrid();
+  renderCart();
+});
+// 個数を直接入力（入力中は書き換えず、確定したら反映）
+$('#cartLines').addEventListener('input', (e) => {
+  if (!e.target.classList.contains('qty')) return;
+  const id = e.target.closest('[data-line]').dataset.line;
+  const v = Math.floor(Number(e.target.value));
+  if (e.target.value !== '' && v >= 0) {
+    cart.set(id, v);
+    const l = cartLines().find((x) => x.menuId === id);
+    if (l) {
+      const line = e.target.closest('[data-line]');
+      line.querySelector('.lsub').textContent = yen(l.price * l.qty);
+      line.querySelector('.lunit').textContent = `${yen(l.price)} × ${l.qty}`;
+    }
+    updateTotals();
+  }
+});
+$('#cartLines').addEventListener('change', (e) => {
+  if (!e.target.classList.contains('qty')) return;
+  const id = e.target.closest('[data-line]').dataset.line;
+  const v = Math.floor(Number(e.target.value));
+  if (!(v > 0)) cart.delete(id); else cart.set(id, v);
+  renderMenuGrid();
+  renderCart();
+});
+$('#paid').addEventListener('input', updateTotals);
+$('#paidQuick').addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-paid]');
+  if (!b) return;
+  $('#paid').value = b.dataset.paid === 'exact' ? cartTotal() : b.dataset.paid;
+  updateTotals();
+});
+$('#ticketNo').addEventListener('input', () => { ticketEdited = true; });
+$('#hideServed').addEventListener('change', renderOrders);
+$('#clearCart').addEventListener('click', () => {
+  cart.clear();
+  $('#paid').value = '';
+  renderMenuGrid();
+  renderCart();
+});
+
+// 会計 → 売上として保存
+$('#checkout').addEventListener('click', async () => {
+  const lines = cartLines();
+  if (!lines.length) return toast('メニューを選んでください');
+  const total = cartTotal();
+  const paidRaw = $('#paid').value;
+  const paid = Number(paidRaw);
+  if (paidRaw !== '' && paid < total) return toast('お預かりが足りません');
+  const account = posAccountId();
+  if (!account) return toast('先に設定で口座を追加してください');
+  const tRaw = $('#ticketNo').value.trim();
+  const ticket = tRaw === '' ? null : Math.floor(Number(tRaw));
+  if (tRaw !== '' && !(ticket > 0)) return toast('整理券番号は1以上の数字にしてください');
+  if (ticket && todayOrders().some((o) => o.ticket === ticket && !o.served) &&
+      !confirm(`整理券 ${ticket} 番は、まだお渡ししていない注文で使われています。このまま追加しますか？`)) return;
+  const now = Date.now();
+  const t = {
+    id: uid(),
+    type: 'income',
+    date: today(),
+    amount: total,
+    category: '売上',
+    account,
+    toAccount: '',
+    memo: (ticket ? `#${ticket} ` : '') + lines.map((l) => `${l.name}×${l.qty}`).join('、'),
+    pos: true,
+    items: lines,
+    ticket,
+    served: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+  try {
+    await writeTx(t);
+  } catch (err) {
+    return toast('保存に失敗しました: ' + err.message);
+  }
+  const change = paidRaw === '' ? null : paid - total;
+  $('#lastOrder').innerHTML = `<div class="muted">会計しました</div>
+    <div class="big-ticket">${ticket ? `整理券 ${ticket} 番` : '番号なし'}</div>
+    <div>${esc(lines.map((l) => `${l.name}×${l.qty}`).join('、'))}</div>
+    <div class="change">合計 ${yen(total)}${change != null ? `　おつり <span class="inc">${yen(change)}</span>` : ''}</div>`;
+  $('#lastOrder').hidden = false;
+  cart.clear();
+  $('#paid').value = '';
+  ticketEdited = false;
+  $('#ticketNo').value = nextTicket();
+  render();
+  $('#lastOrder').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+// お渡し済みの切り替え
+$('#orders').addEventListener('click', async (e) => {
+  const b = e.target.closest('button[data-serve]');
+  if (!b) return;
+  const o = txs.find((x) => x.id === b.dataset.serve);
+  if (!o) return;
+  await writeTx({ ...o, served: !o.served, updatedAt: Date.now() });
+  render();
+});
+
+// メニューの追加・編集
+$('#menuForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const name = f.name.value.trim();
+  const price = Math.round(Number(f.price.value));
+  if (!name) return;
+  if (!(price >= 0)) return toast('値段を入力してください');
+  if (menuItems().some((m) => m.name === name)) return toast('同じ名前のメニューがあります');
+  const now = Date.now();
+  settings.menu.push({ id: uid(), name, price, soldOut: false, createdAt: now, updatedAt: now });
+  // 保存を待つ間に次の入力が始まっても消えないよう、先に入力欄を空にする
+  f.reset();
+  f.name.focus();
+  await saveSettings();
+  changed();
+  renderPos();
+});
+$('#menuList').addEventListener('change', async (e) => {
+  const row = e.target.closest('[data-mid]');
+  if (!row) return;
+  const m = settings.menu.find((x) => x.id === row.dataset.mid);
+  if (!m) return;
+  if (e.target.classList.contains('m-name')) {
+    const v = e.target.value.trim();
+    if (!v) { e.target.value = m.name; return toast('メニュー名を入力してください'); }
+    m.name = v;
+  } else if (e.target.classList.contains('m-price')) {
+    const v = Math.round(Number(e.target.value));
+    if (e.target.value === '' || !(v >= 0)) { e.target.value = m.price; return toast('値段を入力してください'); }
+    m.price = v;
+  } else if (e.target.classList.contains('m-sold')) {
+    m.soldOut = e.target.checked;
+    if (m.soldOut) cart.delete(m.id);
+  } else return;
+  m.updatedAt = Date.now();
+  await saveSettings();
+  changed();
+  renderMenuGrid();
+  renderCart();
+});
+$('#menuList').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-mdel]')) return;
+  const row = e.target.closest('[data-mid]');
+  const m = settings.menu.find((x) => x.id === row.dataset.mid);
+  if (!m || !confirm(`「${m.name}」をメニューから削除しますか？（これまでの売上記録は残ります）`)) return;
+  Object.assign(m, { deleted: true, updatedAt: Date.now() });
+  cart.delete(m.id);
+  await saveSettings();
+  changed();
+  row.remove();
+  renderPos();
+});
+$('#posAccount').addEventListener('change', async (e) => {
+  local.posAccount = e.target.value;
+  await saveLocal();
+});
+
 // ---------- 設定操作 ----------
 $('#accountForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -401,8 +702,8 @@ $('#accountForm').addEventListener('submit', async (e) => {
   const name = f.name.value.trim();
   if (!name) return;
   settings.accounts.push({ id: uid(), name, opening: Math.round(Number(f.opening.value) || 0), updatedAt: Date.now() });
-  await saveSettings();
   f.reset();
+  await saveSettings();
   changed();
   refreshFormOptions();
   render();
@@ -495,6 +796,7 @@ async function mergeIn(data) {
   const nextSettings = {
     accounts: mergeRecords(settings.accounts, data.settings.accounts),
     categories: mergeRecords(settings.categories, data.settings.categories),
+    menu: mergeRecords(settings.menu, data.settings.menu),
   };
   const settingsChanged = JSON.stringify(nextSettings) !== JSON.stringify(settings);
   if (!incoming.length && !settingsChanged) return 0;
@@ -557,7 +859,8 @@ function pendingCount() {
   const since = local.lastSync || 0;
   return allTx.filter((t) => t.updatedAt > since).length +
     settings.accounts.filter((a) => a.updatedAt > since).length +
-    settings.categories.filter((c) => c.updatedAt > since).length;
+    settings.categories.filter((c) => c.updatedAt > since).length +
+    settings.menu.filter((m) => m.updatedAt > since).length;
 }
 // Googleログインは https（または開発用の localhost）でしか動かない
 const syncReady = () => !!local.clientId && (location.protocol === 'https:' || location.hostname === 'localhost');
@@ -741,6 +1044,7 @@ async function reload() {
   allTx = all.map(normalizeTx);
   refreshVisible();
   resetForm();
+  ticketEdited = false;
   render();
 }
 (async function init() {
