@@ -20,6 +20,7 @@
   <button data-tab="entry">入力</button>
   <button data-tab="list">一覧</button>
   <button data-tab="report">集計</button>
+  <button data-tab="plan">計画</button>
   <button data-tab="settings">設定</button>
 </nav>
 
@@ -35,6 +36,8 @@
         <button type="submit" class="primary">追加</button>
       </form>
       <label>売上の入金先<select id="posAccount"></select></label>
+      <label>この端末の整理券の始まり番号<input type="number" id="ticketStart" min="1" step="1" inputmode="numeric"></label>
+      <p class="muted small">会計を2台でするときは、1台目は1、2台目は501のように分けると番号が重なりません。</p>
     </details>
 
     <div id="menuGrid" class="menu-grid"></div>
@@ -125,6 +128,50 @@
     <div id="monthly" class="card" hidden></div>
     <h2>口座残高（現在）</h2>
     <div id="balances" class="card"></div>
+  </section>
+
+  <!-- 計画 -->
+  <section id="tab-plan" class="tab">
+    <div class="card">
+      <h3>イベント</h3>
+      <label>名前<input id="evName" maxlength="40" placeholder="例：駒場祭"></label>
+      <div class="pos-fields">
+        <label>初日<input type="date" id="evStart"></label>
+        <label>最終日<input type="date" id="evEnd"></label>
+      </div>
+      <p class="muted small">この期間にレジで売れた分を「売れた数」として数えます。</p>
+    </div>
+
+    <div class="card goal">
+      <h3>打ち上げ目標</h3>
+      <div class="goal-inputs">
+        <label>人数<input type="number" id="partyPeople" min="0" step="1" inputmode="numeric"></label>
+        <span class="times">×</span>
+        <label>1人あたり（円）<input type="number" id="partyPer" min="0" step="100" inputmode="numeric"></label>
+      </div>
+      <div id="goalView"></div>
+    </div>
+
+    <h2>メニューごとの計画</h2>
+    <p class="muted small">メニューはレジ画面の「メニューの追加・値段の設定」で追加します。まだ決まっていなくても、仮のメニューを入れて試算できます。</p>
+    <div id="planMenus"></div>
+
+    <h2>その他の費用</h2>
+    <div class="card">
+      <p class="muted small">出店料・ガス代・看板・食器など、売れた数に関係なくかかるお金。</p>
+      <div id="costList"></div>
+      <form id="costForm" class="menu-add">
+        <input name="name" placeholder="例：出店料" maxlength="40" required>
+        <input name="amount" type="number" min="0" step="1" inputmode="numeric" placeholder="金額" required>
+        <button type="submit" class="primary">追加</button>
+      </form>
+    </div>
+
+    <h2>予定と実績</h2>
+    <div id="planSummary" class="card"></div>
+
+    <h2>日ごとの売れた数</h2>
+    <div id="planDaily" class="card"></div>
   </section>
 
   <!-- 設定 -->

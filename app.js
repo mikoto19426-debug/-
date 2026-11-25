@@ -51,8 +51,10 @@ const putTx = (t) => reqP(store('tx', 'readwrite').put(t));
 
 // ---------- データ形式 ----------
 // settings（同期される）: { accounts: [{id,name,opening,updatedAt,deleted?}], categories: [{id,kind,name,updatedAt,deleted?}],
-//                          menu: [{id,name,price,soldOut?,createdAt,updatedAt,deleted?}] }
-// local（この端末だけ）: { lastBackup, lastSync, clientId, fileId, token, tokenExp, posAccount }
+//                          menu: [{id,name,price,soldOut?,cost?,planQty?,createdAt,updatedAt,deleted?}],
+//                          costs: [{id,name,amount,updatedAt,deleted?}]（出店料などの固定費）,
+//                          event: {name,start,end,partyPeople,partyPerPerson,updatedAt}（計画・打ち上げ目標） }
+// local（この端末だけ）: { lastBackup, lastSync, clientId, fileId, token, tokenExp, posAccount, deviceId, ticketStart }
 // レジの注文は type:'income' の取引として保存し、items（明細）・ticket（整理券番号）・served（お渡し済み）を持つ
 function normalizeSettings(s) {
   s = s || {};
@@ -67,7 +69,9 @@ function normalizeSettings(s) {
   }
   const accounts = (Array.isArray(s.accounts) ? s.accounts : structuredClone(DEFAULT_ACCOUNTS)).map((a) => ({ updatedAt: 0, ...a }));
   const menu = (Array.isArray(s.menu) ? s.menu : []).map((m) => ({ updatedAt: 0, ...m }));
-  return { accounts, categories, menu };
+  const costs = (Array.isArray(s.costs) ? s.costs : []).map((c) => ({ updatedAt: 0, ...c }));
+  const event = { name: '', start: '', end: '', partyPeople: 7, partyPerPerson: 3000, updatedAt: 0, ...(s.event || {}) };
+  return { accounts, categories, menu, costs, event };
 }
 function normalizeTx(t) {
   return { ...t, updatedAt: t.updatedAt ?? t.createdAt ?? 0 };
@@ -406,6 +410,7 @@ function render() {
   if (active === 'entry') renderRecent();
   if (active === 'list') renderList();
   if (active === 'report') renderReport();
+  if (active === 'plan') renderPlan();
   if (active === 'settings') renderSettings();
   renderSync();
 }
@@ -418,9 +423,11 @@ let ticketEdited = false; // 整理券番号を手で変えたか
 
 const isOrder = (t) => t.pos && t.date === today();
 const todayOrders = () => txs.filter(isOrder).sort((a, b) => b.createdAt - a.createdAt);
+// 整理券番号：この端末で今日出した番号の続き（2台で会計しても重ならないよう、端末ごとに始まり番号を決められる）
 function nextTicket() {
-  const nums = todayOrders().map((o) => o.ticket).filter(Number.isFinite);
-  return nums.length ? Math.max(...nums) + 1 : 1;
+  const start = Number(local.ticketStart) || 1;
+  const nums = todayOrders().filter((o) => o.device === local.deviceId).map((o) => o.ticket).filter(Number.isFinite);
+  return nums.length ? Math.max(...nums) + 1 : start;
 }
 function posAccountId() {
   const accs = accounts();
@@ -512,6 +519,7 @@ function renderMenuEdit() {
     </div>`).join('');
   const accs = accounts().map((a) => ({ value: a.id, label: a.name }));
   fillSelect($('#posAccount'), accs, posAccountId());
+  if (document.activeElement !== $('#ticketStart')) $('#ticketStart').value = Number(local.ticketStart) || 1;
 }
 
 // メニューをタップ → 1個追加
@@ -603,6 +611,7 @@ $('#checkout').addEventListener('click', async () => {
     toAccount: '',
     memo: (ticket ? `#${ticket} ` : '') + lines.map((l) => `${l.name}×${l.qty}`).join('、'),
     pos: true,
+    device: local.deviceId,
     items: lines,
     ticket,
     served: false,
@@ -693,6 +702,289 @@ $('#menuList').addEventListener('click', async (e) => {
 $('#posAccount').addEventListener('change', async (e) => {
   local.posAccount = e.target.value;
   await saveLocal();
+});
+$('#ticketStart').addEventListener('change', async (e) => {
+  const v = Math.floor(Number(e.target.value));
+  if (!(v >= 1)) { e.target.value = Number(local.ticketStart) || 1; return toast('1以上の数字にしてください'); }
+  local.ticketStart = v;
+  await saveLocal();
+  ticketEdited = false;
+  renderPos();
+});
+
+// ---------- 計画（原価率・予定と実績・打ち上げ目標） ----------
+const eventRange = () => {
+  const ev = settings.event;
+  const start = ev.start || today();
+  const end = ev.end && ev.end >= start ? ev.end : start;
+  return { start, end };
+};
+// イベント期間中のレジの注文
+function eventOrders() {
+  const { start, end } = eventRange();
+  return txs.filter((t) => t.pos && t.date >= start && t.date <= end);
+}
+const unitCost = (m) => Number(m?.cost) || 0;
+const margin = (m) => (Number(m.price) || 0) - unitCost(m);
+const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
+const fixedCostTotal = () => settings.costs.filter((c) => !c.deleted).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+const goalAmount = () => (Number(settings.event.partyPeople) || 0) * (Number(settings.event.partyPerPerson) || 0);
+
+function planNumbers() {
+  const menu = menuItems();
+  const byId = new Map(settings.menu.map((m) => [m.id, m]));
+  const sold = {}; // menuId -> { qty, revenue }
+  const daily = {}; // date -> menuId -> qty
+  let actualRevenue = 0, actualCost = 0;
+  for (const o of eventOrders()) {
+    for (const l of o.items || []) {
+      const s = (sold[l.menuId] ??= { qty: 0, revenue: 0 });
+      s.qty += l.qty;
+      s.revenue += l.qty * l.price;
+      actualRevenue += l.qty * l.price;
+      actualCost += l.qty * unitCost(byId.get(l.menuId));
+      ((daily[o.date] ??= {})[l.menuId] = (daily[o.date]?.[l.menuId] || 0) + l.qty);
+    }
+  }
+  let planRevenue = 0, planCost = 0;
+  for (const m of menu) {
+    const q = Number(m.planQty) || 0;
+    planRevenue += q * (Number(m.price) || 0);
+    planCost += q * unitCost(m);
+  }
+  const fixed = fixedCostTotal();
+  return {
+    menu, sold, daily, fixed,
+    plan: { revenue: planRevenue, cost: planCost, profit: planRevenue - planCost - fixed },
+    actual: { revenue: actualRevenue, cost: actualCost, profit: actualRevenue - actualCost - fixed },
+  };
+}
+
+function setIfIdle(el, v) {
+  if (document.activeElement !== el) el.value = v ?? '';
+}
+function renderPlan() {
+  const ev = settings.event;
+  setIfIdle($('#evName'), ev.name);
+  setIfIdle($('#evStart'), ev.start || today());
+  setIfIdle($('#evEnd'), ev.end || ev.start || today());
+  setIfIdle($('#partyPeople'), ev.partyPeople);
+  setIfIdle($('#partyPer'), ev.partyPerPerson);
+  const n = planNumbers();
+  renderGoal(n);
+  renderPlanMenus(n);
+  renderCosts();
+  renderPlanSummary(n);
+  renderPlanDaily(n);
+}
+
+function renderGoal(n) {
+  const goal = goalAmount();
+  const profit = n.actual.profit;
+  const need = goal - profit;
+  let html = `<div class="goal-head"><span>今の利益 <span class="big ${profit >= 0 ? 'inc' : 'exp'}">${yen(profit)}</span></span>
+    <span class="muted">目標 ${yen(goal)}</span></div>`;
+  if (goal > 0) html += `<div class="progress"><i style="width:${Math.max(0, Math.min(100, (profit / goal) * 100))}%"></i></div>`;
+  if (goal <= 0) {
+    html += '<p class="muted small">人数と1人あたりの金額を入れると、目標までの残りが出ます。</p>';
+  } else if (need <= 0) {
+    html += `<p class="goal-msg inc">目標達成！ 打ち上げできます（目標より ${yen(-need)} 多い）</p>`;
+  } else {
+    html += `<p class="goal-msg">目標まであと ${yen(need)}</p>`;
+    const items = n.menu.filter((m) => margin(m) > 0 && !m.soldOut);
+    if (items.length) {
+      html += `<div class="muted small">1種類だけで売るなら、あと何個？</div><div class="chips need">${items
+        .map((m) => `<span class="chip">${esc(m.name)} あと<b>${Math.ceil(need / margin(m)).toLocaleString('ja-JP')}</b>個</span>`).join('')}</div>`;
+    } else if (n.menu.length) {
+      html += '<p class="muted small">原価を入れると、あと何個売ればいいかが出ます。</p>';
+    }
+  }
+  if (goal > 0 && n.menu.some((m) => Number(m.planQty) > 0)) {
+    const diff = n.plan.profit - goal;
+    html += `<p class="small" style="margin-top:10px">予定どおり全部売れたら利益 <b>${yen(n.plan.profit)}</b>
+      → ${diff >= 0 ? `<span class="inc">目標に届きます（${yen(diff)} 余る）</span>` : `<span class="exp">目標に ${yen(-diff)} 足りません</span>`}</p>`;
+  }
+  $('#goalView').innerHTML = html;
+}
+
+function planItemStats(m, n) {
+  const price = Number(m.price) || 0;
+  const cost = unitCost(m);
+  const rate = pct(cost, price);
+  const planQty = Number(m.planQty) || 0;
+  const s = n.sold[m.id] || { qty: 0 };
+  const achieve = pct(s.qty, planQty);
+  const highRate = rate != null && rate >= 50;
+  return `<div class="row2">
+      <span>原価率 <b class="${highRate ? 'warn-text' : ''}">${cost ? `${rate}%` : '—'}</b></span>
+      <span>1個の利益 <b>${cost ? yen(price - cost) : '—'}</b></span>
+      ${planQty ? `<span>予定どおりなら利益 ${cost ? yen((price - cost) * planQty) : '—'}</span>` : ''}
+    </div>
+    ${highRate ? '<div class="small warn-text">原価率が50%以上です。値段か原価を見直す余地があるかもしれません。</div>' : ''}
+    <div class="row2" style="margin-top:6px">
+      <span>売れた <b>${s.qty.toLocaleString('ja-JP')}</b>${planQty ? ` / 予定 ${planQty.toLocaleString('ja-JP')}個` : '個'}</span>
+      ${planQty ? `<span>${achieve}%</span><span>${s.qty >= planQty ? `<span class="inc">予定数を達成${s.qty > planQty ? `（+${s.qty - planQty}）` : ''}</span>` : `残り ${(planQty - s.qty).toLocaleString('ja-JP')}個`}</span>` : ''}
+    </div>
+    ${planQty ? `<div class="progress small"><i style="width:${Math.min(100, achieve)}%"></i></div>` : ''}`;
+}
+function renderPlanMenus(n) {
+  const box = $('#planMenus');
+  const ids = n.menu.map((m) => m.id).join(',');
+  // 入力中は作り直さず、数字の表示だけ更新する
+  if (box.dataset.ids === ids && box.contains(document.activeElement)) {
+    for (const m of n.menu) {
+      const el = box.querySelector(`[data-pid="${CSS.escape(m.id)}"] .pi-stats`);
+      if (el) el.innerHTML = planItemStats(m, n);
+    }
+    return;
+  }
+  box.dataset.ids = ids;
+  box.innerHTML = n.menu.length
+    ? n.menu.map((m) => `<div class="card plan-item" data-pid="${esc(m.id)}">
+        <div class="pi-head"><b>${esc(m.name)}</b><span class="num">${yen(m.price)}</span></div>
+        <div class="pi-inputs">
+          <label>原価（1個あたり・円）<input type="number" class="p-cost" min="0" step="1" inputmode="decimal" value="${m.cost ?? ''}" placeholder="例：120"></label>
+          <label>予定の個数<input type="number" class="p-qty" min="0" step="1" inputmode="numeric" value="${m.planQty ?? ''}" placeholder="例：300"></label>
+        </div>
+        <button type="button" class="link p-calc">材料費の合計から原価を計算</button>
+        <div class="pi-stats">${planItemStats(m, n)}</div>
+      </div>`).join('')
+    : '<div class="card empty">メニューがまだありません。レジ画面の「メニューの追加・値段の設定」から追加してください。</div>';
+}
+function renderCosts() {
+  const list = settings.costs.filter((c) => !c.deleted);
+  $('#costList').innerHTML = list.map((c) => `<div class="cost-row" data-cid="${esc(c.id)}">
+      <span>${esc(c.name)}</span><span class="num">${yen(c.amount)}</span><button type="button" data-cdel>削除</button>
+    </div>`).join('') + (list.length ? `<div class="cost-row"><b>合計</b><b class="num">${yen(fixedCostTotal())}</b><span></span></div>` : '');
+}
+function renderPlanSummary(n) {
+  const row = (label, a, b, cls = '') => `<tr><td>${label}</td><td class="${cls}">${a}</td><td class="${cls}">${b}</td></tr>`;
+  const rate = (x) => (x.revenue ? `${pct(x.cost, x.revenue)}%` : '—');
+  $('#planSummary').innerHTML = `<table><thead><tr><th></th><th>予定</th><th>実績</th></tr></thead><tbody>
+    ${row('売上', yen(n.plan.revenue), yen(n.actual.revenue), 'inc')}
+    ${row('材料の原価', yen(n.plan.cost), yen(n.actual.cost), 'exp')}
+    ${row('その他の費用', yen(n.fixed), yen(n.fixed), 'exp')}
+    ${row('<b>利益</b>', `<b>${yen(n.plan.profit)}</b>`, `<b>${yen(n.actual.profit)}</b>`)}
+    ${row('原価率（全体）', rate(n.plan), rate(n.actual))}
+  </tbody></table>
+  <p class="muted small">実績の原価は「売れた個数 × 今設定している1個あたりの原価」で計算しています。</p>`;
+}
+function renderPlanDaily(n) {
+  const { start, end } = eventRange();
+  const days = [];
+  for (let d = new Date(start + 'T00:00:00'); days.length < 14; d.setDate(d.getDate() + 1)) {
+    const s = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    if (s > end) break;
+    days.push(s);
+  }
+  if (!n.menu.length) { $('#planDaily').innerHTML = '<div class="empty">メニューがありません</div>'; return; }
+  const head = days.map((d) => { const x = new Date(d + 'T00:00:00'); return `<th>${x.getMonth() + 1}/${x.getDate()}(${'日月火水木金土'[x.getDay()]})</th>`; }).join('');
+  const body = n.menu.map((m) => `<tr><td>${esc(m.name)}</td>${days.map((d) => `<td>${(n.daily[d]?.[m.id] || 0).toLocaleString('ja-JP')}</td>`).join('')}<td><b>${(n.sold[m.id]?.qty || 0).toLocaleString('ja-JP')}</b></td></tr>`).join('');
+  const revenue = days.map((d) => {
+    const sum = eventOrders().filter((o) => o.date === d).reduce((s, o) => s + o.amount, 0);
+    return `<td>${yen(sum)}</td>`;
+  }).join('');
+  $('#planDaily').innerHTML = `<div class="scroll-x"><table><thead><tr><th>メニュー</th>${head}<th>合計</th></tr></thead><tbody>${body}</tbody>
+    <tfoot><tr><th>売上</th>${revenue}<th>${yen(n.actual.revenue)}</th></tr></tfoot></table></div>`;
+}
+
+// --- 計画の入力 ---
+async function saveEvent(patch) {
+  Object.assign(settings.event, patch, { updatedAt: Date.now() });
+  await saveSettings();
+  changed();
+  renderPlan();
+}
+$('#evName').addEventListener('change', (e) => saveEvent({ name: e.target.value.trim() }));
+$('#evStart').addEventListener('change', (e) => {
+  const start = e.target.value || today();
+  const end = settings.event.end && settings.event.end >= start ? settings.event.end : start;
+  $('#evEnd').value = end;
+  saveEvent({ start, end });
+});
+$('#evEnd').addEventListener('change', (e) => {
+  const start = settings.event.start || today();
+  let end = e.target.value || start;
+  if (end < start) { end = start; e.target.value = end; toast('最終日は初日より後にしてください'); }
+  saveEvent({ start, end });
+});
+for (const [sel, key] of [['#partyPeople', 'partyPeople'], ['#partyPer', 'partyPerPerson']]) {
+  $(sel).addEventListener('input', (e) => {
+    const v = Math.max(0, Math.round(Number(e.target.value) || 0));
+    settings.event[key] = v;
+    renderGoal(planNumbers());
+  });
+  $(sel).addEventListener('change', (e) => saveEvent({ [key]: Math.max(0, Math.round(Number(e.target.value) || 0)) }));
+}
+async function updateMenu(id, patch) {
+  const m = settings.menu.find((x) => x.id === id);
+  if (!m) return;
+  Object.assign(m, patch, { updatedAt: Date.now() });
+  await saveSettings();
+  changed();
+}
+$('#planMenus').addEventListener('input', (e) => {
+  const card = e.target.closest('[data-pid]');
+  if (!card) return;
+  const m = settings.menu.find((x) => x.id === card.dataset.pid);
+  if (!m) return;
+  const raw = e.target.value;
+  const v = raw === '' ? null : Number(raw);
+  if (raw !== '' && !(v >= 0)) return;
+  // 入力しながら数字を更新（保存は確定時）
+  if (e.target.classList.contains('p-cost')) m.cost = v == null ? null : Math.round(v * 100) / 100;
+  if (e.target.classList.contains('p-qty')) m.planQty = v == null ? null : Math.round(v);
+  const n = planNumbers();
+  card.querySelector('.pi-stats').innerHTML = planItemStats(m, n);
+  renderGoal(n);
+  renderPlanSummary(n);
+});
+$('#planMenus').addEventListener('change', (e) => {
+  const card = e.target.closest('[data-pid]');
+  if (!card) return;
+  const m = settings.menu.find((x) => x.id === card.dataset.pid);
+  if (!m) return;
+  if (e.target.classList.contains('p-cost')) updateMenu(m.id, { cost: m.cost });
+  if (e.target.classList.contains('p-qty')) updateMenu(m.id, { planQty: m.planQty });
+});
+$('#planMenus').addEventListener('click', async (e) => {
+  if (!e.target.closest('.p-calc')) return;
+  const card = e.target.closest('[data-pid]');
+  const m = settings.menu.find((x) => x.id === card.dataset.pid);
+  if (!m) return;
+  const total = prompt(`${m.name}：材料費の合計（円）\n例：麺・肉・野菜・ソースなど全部で 36000`);
+  if (total == null) return;
+  const count = prompt(`${m.name}：その材料で何個分作れますか？\n例：300`);
+  if (count == null) return;
+  const t = Number(total), c = Number(count);
+  if (!(t >= 0) || !(c > 0)) return toast('数字を入れてください');
+  const cost = Math.round((t / c) * 100) / 100;
+  await updateMenu(m.id, { cost });
+  card.querySelector('.p-cost').value = cost;
+  toast(`1個あたりの原価：${cost.toLocaleString('ja-JP')}円`);
+  renderPlan();
+});
+$('#costForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const name = f.name.value.trim();
+  const amount = Math.round(Number(f.amount.value));
+  if (!name || !(amount >= 0)) return toast('名前と金額を入れてください');
+  f.reset();
+  f.name.focus();
+  settings.costs.push({ id: uid(), name, amount, updatedAt: Date.now() });
+  await saveSettings();
+  changed();
+  renderPlan();
+});
+$('#costList').addEventListener('click', async (e) => {
+  if (!e.target.closest('[data-cdel]')) return;
+  const c = settings.costs.find((x) => x.id === e.target.closest('[data-cid]').dataset.cid);
+  if (!c || !confirm(`「${c.name}」を削除しますか？`)) return;
+  Object.assign(c, { deleted: true, updatedAt: Date.now() });
+  await saveSettings();
+  changed();
+  renderPlan();
 });
 
 // ---------- 設定操作 ----------
@@ -797,6 +1089,8 @@ async function mergeIn(data) {
     accounts: mergeRecords(settings.accounts, data.settings.accounts),
     categories: mergeRecords(settings.categories, data.settings.categories),
     menu: mergeRecords(settings.menu, data.settings.menu),
+    costs: mergeRecords(settings.costs, data.settings.costs),
+    event: newer(data.settings.event, settings.event) ? data.settings.event : settings.event,
   };
   const settingsChanged = JSON.stringify(nextSettings) !== JSON.stringify(settings);
   if (!incoming.length && !settingsChanged) return 0;
@@ -860,7 +1154,9 @@ function pendingCount() {
   return allTx.filter((t) => t.updatedAt > since).length +
     settings.accounts.filter((a) => a.updatedAt > since).length +
     settings.categories.filter((c) => c.updatedAt > since).length +
-    settings.menu.filter((m) => m.updatedAt > since).length;
+    settings.menu.filter((m) => m.updatedAt > since).length +
+    settings.costs.filter((c) => c.updatedAt > since).length +
+    (settings.event.updatedAt > since ? 1 : 0);
 }
 // Googleログインは https（または開発用の localhost）でしか動かない
 const syncReady = () => !!local.clientId && (location.protocol === 'https:' || location.hostname === 'localhost');
@@ -1041,6 +1337,7 @@ async function reload() {
   const [s, l, all] = await Promise.all([reqP(store('meta').get('settings')), reqP(store('meta').get('local')), getAllTx()]);
   settings = normalizeSettings(s);
   local = l || { lastBackup: s?.lastBackup ?? null, lastSync: 0, clientId: '', fileId: null };
+  if (!local.deviceId) { local.deviceId = uid(); await saveLocal(); }
   allTx = all.map(normalizeTx);
   refreshVisible();
   resetForm();
