@@ -26,14 +26,15 @@ body {
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   -webkit-tap-highlight-color: transparent;
 }
-#track { height: 1100vh; }
+#track { height: 1500vh; }
 #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #fallback { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 #cap {
   position: fixed; left: 50%;
   top: calc(9% + env(safe-area-inset-top, 0px));
   transform: translate(-50%, 8px);
-  max-width: min(86vw, 34em);
+  width: max-content;
+  max-width: min(86vw, 30em);
   padding: 0.6em 1.6em;
   font-family: var(--font-jp); font-weight: 600;
   font-size: clamp(16px, 2.3vw, 28px); line-height: 1.6;
@@ -141,25 +142,33 @@ const LAMP = [.37, .478];
 /* camera keyframes: [scroll, centerX (painting-height units), centerY, view height] */
 const A = ASP_A;
 const KA = [
-  [0.00, A / 2, 0.50, 2.4],   // museum wall
-  [0.15, 0.40, 0.25, 0.50],   // inside: the sky
-  [0.30, 0.47, 0.17, 0.34],   // close on the stars
-  [0.44, 0.30, 0.45, 0.36],   // awning and lantern
-  [0.58, 0.32, 0.62, 0.32],   // the terrace crowd
-  [0.72, 0.345, 0.72, 0.20],  // an empty table
-  [0.84, 0.345, 0.733, 0.10], // into the empty seat
-  [1.00, 0.345, 0.733, 0.10]
+  [0.00, A / 2, 0.50, 2.40],  // museum after closing
+  [0.10, A / 2, 0.46, 1.15],  // walking up to the frame
+  [0.18, 0.42, 0.20, 0.50],   // floating in the sky
+  [0.27, 0.46, 0.19, 0.42],   // drifting among the stars
+  [0.40, 0.44, 0.60, 0.44],   // sinking down between the houses
+  [0.48, 0.48, 0.82, 0.38],   // feet on the cobblestones
+  [0.57, 0.30, 0.62, 0.36],   // turning toward the café lights
+  [0.65, 0.32, 0.59, 0.24],   // the waiter in white
+  [0.73, 0.345, 0.72, 0.19],  // the empty table
+  [0.80, 0.345, 0.735, 0.12], // sitting down
+  [0.87, 0.52, 0.735, 0.12],  // turning to the right
+  [1.00, 0.52, 0.735, 0.12]
 ];
 const KB = [
-  [0.00, 0.33, 0.44, 0.28], [0.72, 0.33, 0.44, 0.28], [0.90, 0.36, 0.47, 0.46], [1.00, 0.37, 0.47, 0.48]
+  [0.00, 0.47, 0.44, 0.30], [0.80, 0.47, 0.44, 0.30], [0.93, 0.36, 0.47, 0.46], [1.00, 0.37, 0.47, 0.48]
 ];
 const CAPS = [
-  [0.00, 0.07, '下へスクロールして、絵の中へ', true],
-  [0.19, 0.34, '1888年、アルル', false],
-  [0.39, 0.50, 'カフェの明かりが、石畳を照らしている', false],
-  [0.54, 0.66, 'にぎやかな声が聞こえる', true],
-  [0.74, 0.80, '空いている席がひとつ', true],
-  [0.85, 0.94, '……やあ、きみも絵の中に来たのかい？', true]
+  [0.00, 0.06, '閉館後の美術館。一枚の絵だけが、まだ光っている。', true],
+  [0.07, 0.15, '近づくと、絵の中から夜風が吹いてきた。', true],
+  [0.18, 0.27, '気がつくと、1888年、アルルの夜空に浮かんでいた。', false],
+  [0.29, 0.42, '星にまぎれて、ゆっくりと街へ降りていく。', false],
+  [0.44, 0.52, '石畳に、そっと足がついた。', true],
+  [0.54, 0.62, '通りの先に黄色い明かり。にぎやかな声。カフェテラスだ。', false],
+  [0.64, 0.71, '白いエプロンの給仕さんが、空いている席をすすめてくれた。', true],
+  [0.73, 0.80, '腰をおろすと、となりの席から声がした。', true],
+  [0.86, 0.915, '「やあ、きみも絵の中に来たのかい？」', true],
+  [0.915, 0.955, '「ぼくはフィンセント。この夜を描いているところさ」', true]
 ];
 
 function sample(keys, p) {
@@ -193,7 +202,7 @@ const FS = `precision highp float;
 varying vec2 vUv;
 uniform sampler2D uA; uniform sampler2D uB;
 uniform vec2 uRes; uniform vec3 uCamA; uniform vec3 uCamB;
-uniform float uAspA; uniform float uAspB; uniform float uT; uniform float uMix; uniform float uGold; uniform float uLive;
+uniform float uAspA; uniform float uAspB; uniform float uT; uniform float uMix; uniform float uGold; uniform float uLive; uniform float uFall;
 uniform vec3 uStars[16]; uniform vec2 uLamp;
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
@@ -244,8 +253,17 @@ void main(){
     vec2 ub = toWorld(uCamB)/vec2(uAspB,1.);
     vec2 dnb = vec2(noise(ub*20.+uT*.2), noise(ub*20.+3.+uT*.2)) - .5;
     vec3 cb = texture2D(uB, clamp(ub + dnb*.0015*uLive, 0., 1.)).rgb;
-    float n = fbm(vec2(vUv.x*3.+vUv.y*1.5, vUv.y*16.-vUv.x*2.)*1.3);
-    col = mix(col, cb, smoothstep(n-.04, n+.04, uMix*1.25-.1));
+    float n = fbm(vec2(vUv.y*14., vUv.x*2.))*.3;
+    float edge = 1.15 - uMix*1.5;
+    col = mix(col, cb, smoothstep(edge-.05, edge+.05, vUv.x + n));
+  }
+  if (uFall > 0.) {
+    float sx = floor(vUv.x*90.);
+    float lane = hash(vec2(sx, 3.1));
+    float y = fract(vUv.y*1.5 + uT*(.5+lane) + lane*7.);
+    float streak = step(.82, lane) * smoothstep(.0, .25, y) * smoothstep(.45, .25, y);
+    float w = 1. - abs(fract(vUv.x*90.)-.5)*2.;
+    col += vec3(1.,.9,.55)*streak*pow(w, 6.)*.55*uFall;
   }
   if (uGold > 0.) {
     float r = length((vUv-.5)*vec2(asp,1.));
@@ -269,7 +287,7 @@ function setupGL(imA, imB) {
   const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
   const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-  ['uA', 'uB', 'uRes', 'uCamA', 'uCamB', 'uAspA', 'uAspB', 'uT', 'uMix', 'uGold', 'uLive', 'uStars', 'uLamp'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
+  ['uA', 'uB', 'uRes', 'uCamA', 'uCamB', 'uAspA', 'uAspB', 'uT', 'uMix', 'uGold', 'uLive', 'uFall', 'uStars', 'uLamp'].forEach(n => U[n] = gl.getUniformLocation(prog, n));
   const tex = (im, unit) => {
     const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, im);
@@ -311,8 +329,8 @@ function updateDom(p) {
     if (idx >= 0) { capEl.textContent = CAPS[idx][2]; capEl.classList.toggle('low', CAPS[idx][3]); void capEl.offsetWidth; capEl.classList.add('on'); }
   }
   hintEl.style.opacity = p < .03 ? 1 : 0;
-  bonEl.classList.toggle('on', p > .95);
-  const end = p > .97; topEl.hidden = !end && !topEl.classList.contains('on'); topEl.classList.toggle('on', end);
+  bonEl.classList.toggle('on', p > .96);
+  const end = p > .975; topEl.hidden = !end && !topEl.classList.contains('on'); topEl.classList.toggle('on', end);
   railEl.style.height = (p * 100).toFixed(1) + '%';
 }
 
@@ -321,14 +339,15 @@ function frame() {
   sp += (target - sp) * (1 - Math.exp(-dt * (RM ? 12 : 4.5)));
   if (Math.abs(target - sp) < 1e-5) sp = target;
   const sa = cw / ch;
-  const inside = smooth(.08, .15, sp);
+  const inside = smooth(.11, .18, sp);
   const camA = fitInside(sample(KA, sp), ASP_A, sa, inside);
   const camB = fitInside(sample(KB, sp), ASP_B, sa, 1);
   gl.uniform2f(U.uRes, cv.width, cv.height);
   gl.uniform3f(U.uCamA, camA[0], camA[1], camA[2]);
   gl.uniform3f(U.uCamB, camB[0], camB[1], camB[2]);
   gl.uniform1f(U.uT, now % 1000);
-  gl.uniform1f(U.uMix, smooth(.72, .85, sp));
+  gl.uniform1f(U.uMix, smooth(.80, .88, sp));
+  gl.uniform1f(U.uFall, smooth(.28, .31, sp) * (1 - smooth(.40, .46, sp)) * (RM ? 0 : 1));
   gl.uniform1f(U.uGold, smooth(.92, 1, sp));
   gl.uniform1f(U.uLive, RM ? .25 : 1);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
