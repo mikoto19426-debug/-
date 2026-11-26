@@ -13,6 +13,7 @@ function budgetCard(){
     <div class="between sub num"><span>使った金額 ${yen(exp)}</span><span>予算 ${yen(b)}</span></div>
     ${!over&&left>0&&daysLeft>0?`<div class="sub" style="margin-top:6px">残り${daysLeft}日・1日あたり約 <span class="num">${yen(Math.floor(left/daysLeft))}</span></div>`:''}
     ${!over?(()=>{const dim=m.b.getDate(),dn=new Date().getDate();const pd=exp-Math.round(b*dn/dim);return `<div class="sub ${pd>0?'pace-warn':'pace-ok'}" style="margin-top:2px">${pd>0?`理想のペースより <span class="num">${yen(pd)}</span> 多めです`:`理想のペースより <span class="num">${yen(-pd)}</span> 少なめ。いい調子です`}</div>`})():''}
+    ${optCall('heroLine').join('')}
   </section>`;
 }
 /* ホームは3つだけ：①ドット＋予算 ②記録する ③今日の問いかけ（ひとつ） */

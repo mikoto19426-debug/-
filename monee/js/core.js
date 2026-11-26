@@ -104,7 +104,7 @@ const catBy=id=>settings().categories.find(c=>c.id===id||c.name===id)||{id:id||'
 
 /* ================= Money logic ================= */
 const live=t=>t.status!=='cancelled'&&t.status!=='draft';
-const netExpense=t=>(t.type==='expense'&&live(t))?Math.max(0,toInt(t.amount)-toInt(t.refunded)):0;
+const netExpense=t=>(t.type==='expense'&&live(t))?Math.max(0,toInt(t.amount)-toInt(t.refunded)-toInt(t.lend?.amount)):0; // 立て替え分は自分の支出に入れない
 const incomeOf=t=>(t.type==='income'&&live(t))?toInt(t.amount):0;
 function alloc(t){ // splits net expense across item categories; always sums exactly to netExpense
   const net=netExpense(t);if(!net)return[];

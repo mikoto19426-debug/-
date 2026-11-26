@@ -42,6 +42,7 @@ function dotLines(){ // 先頭ほど大事。行動が必要なものは btn:[�
   const dr=S.txns.filter(t=>t.status==='draft').length;if(dr)out.push({mood:'calm',text:`下書きが${dr}件あるよ。確定するまで集計に入らないから気をつけてね。`,btn:['下書きを見る','data-act="drafts"']});
   const dn=new Date().getDate();const miss=st.recurring.find(r=>toInt(r.day)<=dn&&!S.txns.some(t=>t.recurringId===r.id&&inRange(t,m.from,m.to)));
   if(miss)out.push({mood:'calm',text:`毎月${toInt(miss.day)}日の「${miss.name}」（${yen(miss.amount)}）が、今月まだ記録されてないよ。`,btn:['記録する',`data-act="recur" data-id="${esc(miss.id)}"`]});
+  out.push(...optCall('dotLines').flat());
   // 気をつけたいこと
   if(b&&exp>b)out.push({mood:'worried',text:`予算を${yen(exp-b)}オーバーしちゃった…。残りの日は「がまんした」で取りかえそう。`});
   else if(b&&exp/b*100>=st.alertAt)out.push({mood:'worried',text:`予算の${Math.round(exp/b*100)}%まで来たよ。残り${dl}日、1日${yen(Math.floor((b-exp)/dl))}ならいけるよ。`});

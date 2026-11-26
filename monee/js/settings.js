@@ -9,6 +9,7 @@ function settingsView(){
   return head+ro+`<div class="cols"><div>
   <section class="section"><div class="sec-h"><h2 class="s">アカウント</h2></div><div class="card" style="padding:4px 16px">${row('user','表示名',st.name?esc(st.name)+'さん':'未設定','s-name')}${row('shield','プライバシーとセキュリティ','データの保存先と扱い','s-privacy')}</div></section>
   <section class="section"><div class="sec-h"><h2 class="s">連携</h2></div><div class="card sm"><div class="row" style="align-items:flex-start">${ic('mail')}<div style="flex:1"><div class="between"><b>Gmail</b><span class="pill gray">未接続</span></div><div class="sub" style="margin-top:4px">このアプリからGmailへ直接つなぐ機能はまだありません。かわりに、Claudeのチャットで「Gmailから購入メールを取り込んで」と頼むと、見つかった支出が「確認待ちの候補」に届きます。勝手に保存されることはありません。</div></div></div></div></section>
+  <section class="section"><div class="sec-h"><h2 class="s">機能を追加する</h2><span class="sub">使う人だけオン</span></div><div class="card" style="padding:4px 16px">${optionRows()}</div></section>
   <section class="section"><div class="sec-h"><h2 class="s">お金の設定</h2></div><div class="card" style="padding:4px 16px">
    ${row('wallet','月の予算',st.budget?yen(st.budget)+` · ${st.alertAt}%でお知らせ`:'未設定','budget')}
    ${row('wallet','カテゴリ別の予算',(()=>{const n=Object.values(st.catBudgets||{}).filter(v=>toInt(v)>0).length;return n?`${n}カテゴリ`:'未設定'})(),'s-catbud')}

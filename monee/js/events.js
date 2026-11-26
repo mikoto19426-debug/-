@@ -1,6 +1,7 @@
 "use strict";
 /* ================= Events ================= */
 document.addEventListener('click',async e=>{
+  const op=e.target.closest('[data-opt]');if(op){optClick(op);return}
   const go=e.target.closest('[data-go]');if(go){location.hash='#'+go.dataset.go;return}
   const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act;const id=el.dataset.id;
   if(a==='scrim'||a==='cfscrim'){if(e.target===el){if(a==='cfscrim')$('#cfn')?.click();else closeSheet()}return}

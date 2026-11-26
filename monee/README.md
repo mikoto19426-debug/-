@@ -17,15 +17,37 @@ claude.ai のアーティファクトとして公開しています（データ�
 
 | ファイル | 中身 |
 |---|---|
-| `index.html` | 画面の骨組みと、読み込むファイルの一覧 |
+| `index.html` | 画面の骨組みと、読み込むファイルの一覧（順番に意味がある） |
 | `css/style.css` | 見た目（色の変数・ダークモードもここ） |
 | `js/core.js` | アイコン・共通の道具・初期設定・状態・お金の計算 |
-| `js/features.js` | すばやく記録・ドット・買ってよかった？・がまん貯金の計算まわり |
-| `js/platform.js` | 保存先への接続・シートやトーストなどの部品・ナビ・描画 |
-| `js/home.js` / `history.js` / `add.js` / `chat.js` / `insights.js` / `settings.js` | 各画面 |
-| `js/sheets.js` | すばやく記録・がまん貯金のシート |
-| `js/events.js` | タップや入力の受け取り、起動 |
-| `tests/mock.js` | テスト用の偽データ層 |
-| `tests/smoke.js` | 動作テスト（`node tests/smoke.js`） |
+| `js/days.js` | 日ごとの状態（支出あり／0円でした／記録なし） |
+| `js/budget.js` | カテゴリ別の予算 |
+| `js/quick.js` | すばやく記録：カテゴリ推測・いつもの・店名候補・シート |
+| `js/feel.js` | 買ってよかった？（2〜7日後に聞く） |
+| `js/gaman.js` | がまん貯金（まだ／移した の2段階） |
+| `js/dot.js` | ドット：ひとこと・成長・覚えていること |
+| `js/parts.js` | いくつかの画面で使う部品（記録の行・内訳・いつものボタン） |
+| `js/opt.js` | オプション機能のしくみ（`OPTIONS` に登録する） |
+| `js/opt-*.js` | オプション機能（立て替え・カード・口座残高・収入予定） |
+| `js/platform.js` | 保存先への接続・シートやトースト・ナビ・描画 |
+| `js/home.js` ほか各画面 | `home` / `history` / `add` / `chat` / `insights` / `settings` |
+| `js/backup.js` | バックアップから戻す・レシート画像の後始末 |
+| `js/events.js` | タップや入力の受け取り、最後に `boot()` |
+| `tests/smoke.js` | 動作テスト（`node tests/smoke.js`）。段階ごとのテストは `tests/checks/` |
+| `tests/shoot.js` | 見た目の確認用の撮影（`node tests/shoot.js <出力先>`） |
 
-`js/` は読み込む順番に意味があります（`index.html` の順）。`events.js` が最後に `boot()` を呼びます。
+## 新しいオプション機能を足すとき
+
+`js/opt-なまえ.js` を作って `OPTIONS.push({...})` で登録し、`index.html` に1行足すだけ。
+ホームや各画面のコードには手を入れない（画面は `optCall()` で、オンの機能だけを呼ぶ）。
+`tests/checks/` に、オフのときに何も出ないことと、オンのときの計算を確かめるテストを足す。
+
+## 保存しているデータ
+
+| 場所 | 中身 |
+|---|---|
+| `txns/{id}` | 記録（支出・収入・振替）。`feel`（買ってよかった？）、`lend`（立て替え）を持つことがある |
+| `skips/{id}` | がまん貯金。`status` は `pending`（まだ）か `moved`（移した） |
+| `days/{YYYY-MM-DD}` | 「0円でした」と記録した日 |
+| `inbox/{id}` | メールなどから届いた、確認待ちの候補 |
+| `config/settings` | 設定（予算・カテゴリ・オプション機能など） |
