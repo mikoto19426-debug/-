@@ -81,7 +81,7 @@ const DEFAULTS={
     {id:'inc_other',name:'その他収入',color:'#A4BAC7',kind:'income'},
   ],
   methods:['現金','クレジットカード','交通系IC','QR決済','銀行口座'],
-  recurring:[],goals:[],catBudgets:{},
+  recurring:[],goals:[],catBudgets:{},excludeWords:['かぞくのおさいふ'],
 };
 const TYPE_L={expense:'支出',income:'収入',transfer:'振替',refund:'返金'};
 const STATUS_L={draft:'下書き',cancelled:'取消',refunded:'返金済み',partial:'一部返金'};
@@ -90,7 +90,7 @@ const SRC_L={manual:'手入力',chat:'AIチャット',receipt:'レシート',cla
 /* ================= State ================= */
 const S={
   db:null,user:null,sample:null,assets:null,downloads:null,canWrite:null,
-  txns:[],settingsDoc:null,inbox:[],skips:[],dotI:0,dotHopAt:0,
+  txns:[],settingsDoc:null,inbox:[],skips:[],days:{},dotI:0,dotHopAt:0,
   ready:{txns:false,settings:false,inbox:false},slow:false,fatal:null,
   route:'home',
   hist:{q:'',period:'month',type:'all',cat:'',method:'',from:'',to:'',limit:120},
@@ -98,7 +98,7 @@ const S={
   form:null,scan:null,chat:{msgs:[],busy:false,proposals:{}},
   online:navigator.onLine,
 };
-const settings=()=>{const d=S.settingsDoc||{};return {...DEFAULTS,...d,categories:d.categories?.length?d.categories:DEFAULTS.categories,methods:d.methods?.length?d.methods:DEFAULTS.methods,recurring:d.recurring||[],goals:d.goals||[],catBudgets:d.catBudgets||{}}};
+const settings=()=>{const d=S.settingsDoc||{};return {...DEFAULTS,...d,categories:d.categories?.length?d.categories:DEFAULTS.categories,methods:d.methods?.length?d.methods:DEFAULTS.methods,recurring:d.recurring||[],goals:d.goals||[],catBudgets:d.catBudgets||{},excludeWords:Array.isArray(d.excludeWords)?d.excludeWords:DEFAULTS.excludeWords}};
 const cats=kind=>settings().categories.filter(c=>!kind||c.kind===kind);
 const catBy=id=>settings().categories.find(c=>c.id===id||c.name===id)||{id:id||'other',name:id||'未分類',color:'#A4BAC7'};
 

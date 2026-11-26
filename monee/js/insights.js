@@ -1,58 +1,64 @@
 "use strict";
 /* ---------- Weekly review ---------- */
-const isFam=t=>/かぞくのおさいふ/.test(t.note||'');
-function wasteType(t){
-  if(t.recurringId)return null;const txt=(t.merchant||'')+' '+(t.note||'');const e=netExpense(t);if(!e)return null;
-  if(t.category==='cafe')return 'カフェ';
-  if(t.category==='transport'&&/タクシー|uber/i.test(txt))return 'タクシー';
-  if(/解約/.test(t.note||''))return '解約したサブスク';
-  if(t.category==='food'&&e<1000&&/ファミリーマート|ファミマ|セブン|ローソン|まいばすけっと|自動販売機|自販機|物販|生協|購買/.test(txt))return 'コンビニ・自販機・購買';
+// 設定の「除くメモの言葉」を含む記録（家族のお金など）
+const isFam=t=>settings().excludeWords.some(w=>w&&(t.note||'').includes(w));
+// 何がムダかは決め打ちせず、本人の「モヤっと」評価から学ぶ
+function moyattoModel(){
+  const by={},cat={};
+  for(const t of S.txns){if(t.type!=='expense'||!FEEL[t.feel])continue;const bad=t.feel==='bad';const k=norm(t.merchant);
+    if(k){const o=by[k]=by[k]||{bad:0,ok:0};bad?o.bad++:o.ok++}
+    const c=cat[t.category]=cat[t.category]||{bad:0,ok:0};bad?c.bad++:c.ok++}
+  return {by,cat,rated:Object.keys(cat).length>0};
+}
+function wasteType(t,M){
+  if(t.recurringId||!netExpense(t))return null;
+  if(t.feel==='bad')return catBy(t.category).name;
+  if(t.feel)return null;
+  const o=M.by[norm(t.merchant)];if(o&&o.bad>=2&&o.bad>o.ok)return catBy(t.category).name;
+  const c=M.cat[t.category];if(c&&c.bad>=3&&c.bad>c.ok)return catBy(t.category).name;
   return null;
 }
-function weekStat(from,to,exFam){
+function weekStat(from,to,exFam,M){
   let exp=0,waste=0,wn=0,days=new Set();const byType={},items=[];
-  for(const t of S.txns){if(!inRange(t,from,to))continue;if(exFam&&isFam(t))continue;const e=netExpense(t);if(!e)continue;exp+=e;days.add(t.date);const w=wasteType(t);if(w){waste+=e;wn++;byType[w]=byType[w]||{n:0,amt:0};byType[w].n++;byType[w].amt+=e;items.push({t,e,w})}}
+  for(const t of S.txns){if(!inRange(t,from,to))continue;if(exFam&&isFam(t))continue;const e=netExpense(t);if(!e)continue;exp+=e;days.add(t.date);const w=wasteType(t,M);if(w){waste+=e;wn++;byType[w]=byType[w]||{n:0,amt:0};byType[w].n++;byType[w].amt+=e;items.push({t,e,w})}}
   return {exp,waste,wn,byType,items:items.sort((a,b)=>b.e-a.e),days:days.size};
 }
-const WASTE_TIP={'コンビニ・自販機・購買':'飲み物は水筒やペットボトルを家から持っていくと、ここがいちばん減らしやすいよ。','カフェ':'カフェは「週◯回まで」と回数を決めておくと、楽しみは残したまま減らせるよ。','タクシー':'タクシーは出発を15分早めるだけで、電車に置きかえられることが多いよ。','解約したサブスク':'無料体験やお試しの終了日をカレンダーに入れておくと、うっかり課金を防げるよ。'};
 function weeklyReview(I){
   const r=rangeOf('week',I.offset),pv=prevSameElapsed('week',I.offset);const ex=!!I.exFam;
-  const cur=weekStat(r.from,r.to,ex),prev=weekStat(pv.from,pv.to,ex);
+  const M=moyattoModel();const cur=weekStat(r.from,r.to,ex,M),prev=weekStat(pv.from,pv.to,ex,M);
   const partial=I.offset===0;const hasPrev=S.txns.some(t=>t.date<r.from&&netExpense(t));
   const d=cur.exp-prev.exp,wd=cur.waste-prev.waste;
   const pc=(a,b)=>b?`（${a-b>0?'+':''}${Math.round((a-b)/b*100)}%）`:'';
   let grade,gl,msg;
   if(!hasPrev||!prev.exp){grade='—';gl='';msg='先週の記録がまだないので、比較は来週からだよ。まずは今週の数字を基準にしよう。'}
   else{const sc=(d<0?1:0)+(wd<0?1:0)+(d<0&&wd<=0&&cur.wn<=prev.wn?0:0);
-    if(sc===2){grade='◎';gl='いい感じ！';msg=`支出も無駄遣いっぽい出費も${partial?'先週の同じ曜日まで':'先週'}より減ってるよ。`}
-    else if(sc===1){grade='○';gl='まずまず';msg=d<0?`支出全体は減ったけど、無駄遣いっぽい出費は${wd>0?'少し増えたよ':'横ばいだよ'}。`:`支出全体は増えたけど、無駄遣いっぽい出費は減ってるよ。大きな出費は必要なものだったか見直してみよう。`}
-    else{grade='△';gl='来週がんばろう';msg=`${partial?'先週の同じ曜日まで':'先週'}と比べて、支出も無駄遣いっぽい出費も増えてるよ。`}}
+    if(sc===2){grade='◎';gl='いい感じ！';msg=`支出もモヤっとしやすい出費も${partial?'先週の同じ曜日まで':'先週'}より減ってるよ。`}
+    else if(sc===1){grade='○';gl='まずまず';msg=d<0?`支出全体は減ったけど、モヤっとしやすい出費は${wd>0?'少し増えたよ':'横ばいだよ'}。`:`支出全体は増えたけど、モヤっとしやすい出費は減ってるよ。大きな出費は必要なものだったか見直してみよう。`}
+    else{grade='△';gl='来週がんばろう';msg=`${partial?'先週の同じ曜日まで':'先週'}と比べて、支出もモヤっとしやすい出費も増えてるよ。`}}
   const topW=Object.entries(cur.byType).sort((a,b)=>b[1].amt-a[1].amt)[0];
-  const tip=topW?WASTE_TIP[topW[0]]:'';
+  const tip=topW?`「${topW[0]}」はモヤっとしやすいみたい。次に買う前に、10秒だけ考えてみよう。`:'';
   // 8-week trend
-  const wk=[];for(let k=7;k>=0;k--){const rr=rangeOf('week',I.offset-k);const s=weekStat(rr.from,rr.to,ex);wk.push({label:fmtShort(rr.from),from:rr.from,to:rr.to,...s})}
+  const wk=[];for(let k=7;k>=0;k--){const rr=rangeOf('week',I.offset-k);const s=weekStat(rr.from,rr.to,ex,M);wk.push({label:fmtShort(rr.from),from:rr.from,to:rr.to,...s})}
   const first=wk.findIndex(w=>w.exp>0);const ws=first<0?wk.slice(-1):wk.slice(Math.max(0,first));
   const max=Math.max(1,...ws.map(w=>w.exp));const W=640,H=200,pb=30,n=ws.length,bw=W/Math.max(n,4);
-  const svg=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="週ごとの支出の推移"><line x1="0" x2="${W}" y1="${H-pb}" y2="${H-pb}" stroke="var(--border)"/>${ws.map((w,i)=>{const h=w.exp/max*(H-pb-18),hw=w.waste/max*(H-pb-18);const x=i*bw;const last=i===n-1;return `<rect class="b ${last?'cur':''}" x="${x+bw*.2}" y="${H-pb-h}" width="${bw*.6}" height="${Math.max(h,w.exp?2:0)}" rx="4"/>${w.waste?`<rect x="${x+bw*.2}" y="${H-pb-hw}" width="${bw*.6}" height="${Math.max(hw,2)}" rx="3" style="fill:#D99A8B"/>`:''}<text x="${x+bw/2}" y="${H-9}" text-anchor="middle">${w.label}〜</text><text x="${x+bw/2}" y="${Math.max(12,H-pb-h-5)}" text-anchor="middle" style="font-size:12px">${w.exp>=10000?(w.exp/10000).toFixed(1)+'万':w.exp.toLocaleString('ja-JP')}</text><title>${w.label}〜 支出${yen(w.exp)}・無駄遣いっぽい${yen(w.waste)}</title>`}).join('')}</svg>`;
+  const svg=`<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="週ごとの支出の推移"><line x1="0" x2="${W}" y1="${H-pb}" y2="${H-pb}" stroke="var(--border)"/>${ws.map((w,i)=>{const h=w.exp/max*(H-pb-18),hw=w.waste/max*(H-pb-18);const x=i*bw;const last=i===n-1;return `<rect class="b ${last?'cur':''}" x="${x+bw*.2}" y="${H-pb-h}" width="${bw*.6}" height="${Math.max(h,w.exp?2:0)}" rx="4"/>${w.waste?`<rect x="${x+bw*.2}" y="${H-pb-hw}" width="${bw*.6}" height="${Math.max(hw,2)}" rx="3" style="fill:#D99A8B"/>`:''}<text x="${x+bw/2}" y="${H-9}" text-anchor="middle">${w.label}〜</text><text x="${x+bw/2}" y="${Math.max(12,H-pb-h-5)}" text-anchor="middle" style="font-size:12px">${w.exp>=10000?(w.exp/10000).toFixed(1)+'万':w.exp.toLocaleString('ja-JP')}</text><title>${w.label}〜 支出${yen(w.exp)}・モヤっとしやすい${yen(w.waste)}</title>`}).join('')}</svg>`;
   const row=(l,a,b)=>`<div class="between" style="padding:8px 0;border-bottom:1px solid var(--border)"><span>${l}</span><span class="num" style="text-align:right"><b>${yen(a)}</b>${prev.exp&&hasPrev?`<span class="sub" style="display:block;font-size:12px">${partial?'先週同時点':'先週'} ${yen(b)} → ${syen(a-b,a-b>0?1:a-b<0?-1:0)}${pc(a,b)}</span>`:''}</span></div>`;
   const famN=S.txns.filter(t=>inRange(t,r.from,r.to)&&isFam(t)&&netExpense(t)).length;
   return `<section class="section"><div class="sec-h"><h2 class="s">今週の評価</h2>${partial?'<span class="pill">途中経過</span>':''}</div><div class="card">
    <div class="row" style="gap:14px;align-items:center;margin-bottom:10px"><div style="font-size:40px;line-height:1;font-weight:700;color:var(--primary)">${grade}</div><div><b>${gl||'今週の記録'}</b><div class="sub" style="font-size:14px">${esc(msg)}</div></div></div>
-   ${row('支出の合計',cur.exp,prev.exp)}${row(`無駄遣いっぽい出費（${cur.wn}回）`,cur.waste,prev.waste)}
+   ${row('支出の合計',cur.exp,prev.exp)}${row(`モヤっとしやすい出費（${cur.wn}回）`,cur.waste,prev.waste)}
    <div class="between" style="padding:8px 0"><span>記録した日</span><span class="num">${cur.days}日 · 1日平均 ${yen(cur.days?cur.exp/Math.max(1,Math.round((parseD(partial?today():r.to)-parseD(r.from))/864e5)+1):0)}</span></div>
-   ${famN?`<label class="check" style="margin-top:6px"><input type="checkbox" data-act="ifam" ${ex?'checked':''}> かぞくのおさいふの支出（${famN}件）を除いて計算する</label>`:''}
+   ${famN?`<label class="check" style="margin-top:6px"><input type="checkbox" data-act="ifam" ${ex?'checked':''}> 「${esc(settings().excludeWords.join('・'))}」とメモした支出（${famN}件）を除いて計算する</label>`:''}
    ${tip?`<div class="notice" style="margin-top:10px;padding:12px">${ic('info','sm')}<div style="font-size:14px">${esc(tip)}</div></div>`:''}
   </div></section>
-  <section class="section"><div class="sec-h"><h2 class="s">週ごとの推移</h2><span class="sub" style="display:inline-flex;align-items:center;gap:4px"><span class="dot" style="background:#D99A8B"></span>無駄遣いっぽい出費</span></div><div class="card">${svg}<table class="sr-only"><caption>週ごとの支出</caption>${ws.map(w=>`<tr><th>${w.label}〜</th><td>${yen(w.exp)}</td><td>${yen(w.waste)}</td></tr>`).join('')}</table></div></section>
-  <section class="section"><div class="sec-h"><h2 class="s">無駄遣いっぽい出費の内訳</h2></div><div class="card" style="padding:8px 16px">${Object.keys(cur.byType).length?Object.entries(cur.byType).sort((a,b)=>b[1].amt-a[1].amt).map(([k,v])=>{const p=prev.byType[k];return `<div class="between" style="padding:10px 0;border-bottom:1px solid var(--border)"><span class="ell">${esc(k)}</span><span class="sub num" style="flex:none">${v.n}回 · <b style="color:var(--text-primary)">${yen(v.amt)}</b>${hasPrev&&prev.exp?` <span style="font-size:12px">(先週 ${p?p.n:0}回)</span>`:''}</span></div>`}).join(''):emptyState('check','無駄遣いっぽい出費はなし','この週はコンビニ・カフェ・タクシーなどの出費がありませんでした。')}<p class="sub" style="font-size:12px;margin:10px 0 4px">コンビニ・自販機・購買での1,000円未満の食費、カフェ、タクシー、解約したサブスクを集計しています。定期の支払いは含みません。</p></div></section>`;
+  <section class="section"><div class="sec-h"><h2 class="s">週ごとの推移</h2><span class="sub" style="display:inline-flex;align-items:center;gap:4px"><span class="dot" style="background:#D99A8B"></span>モヤっとしやすい出費</span></div><div class="card">${svg}<table class="sr-only"><caption>週ごとの支出</caption>${ws.map(w=>`<tr><th>${w.label}〜</th><td>${yen(w.exp)}</td><td>${yen(w.waste)}</td></tr>`).join('')}</table></div></section>
+  <section class="section"><div class="sec-h"><h2 class="s">モヤっとしやすい出費の内訳</h2></div><div class="card" style="padding:8px 16px">${Object.keys(cur.byType).length?Object.entries(cur.byType).sort((a,b)=>b[1].amt-a[1].amt).map(([k,v])=>{const p=prev.byType[k];return `<div class="between" style="padding:10px 0;border-bottom:1px solid var(--border)"><span class="ell">${esc(k)}</span><span class="sub num" style="flex:none">${v.n}回 · <b style="color:var(--text-primary)">${yen(v.amt)}</b>${hasPrev&&prev.exp?` <span style="font-size:12px">(先週 ${p?p.n:0}回)</span>`:''}</span></div>`}).join(''):(M.rated?emptyState('check','モヤっとしやすい出費はなし','この週は、あなたが「モヤっと」と感じやすい出費がありませんでした。'):emptyState('sparkles','まだ判断できません','「買ってよかった？」に答えていくと、あなたにとってモヤっとしやすい出費がここに出ます。'))}<p class="sub" style="font-size:12px;margin:10px 0 4px">「モヤっと」と答えた出費と、まだ答えていない出費のうち、よく「モヤっと」になる店・カテゴリのものを集計しています。定期の支払いは含みません。</p></div></section>`;
 }
 
 /* ---------- Monthly review & calendar ---------- */
 function monthlyReview(r,pv,cur,prev){
   const isCur=S.ins.offset===0;const end=isCur?today():r.to;
-  const spent=new Set(S.txns.filter(t=>inRange(t,r.from,end)&&netExpense(t)).map(t=>t.date));
-  const elapsed=Math.round((parseD(end)-parseD(r.from))/864e5)+1;
-  const zero=Math.max(0,elapsed-spent.size);const avg=cur.exp/Math.max(1,elapsed);
+  const dc=dayCounts(r.from,end);const elapsed=Math.max(1,dc.days);const avg=cur.exp/elapsed;
   const big=S.txns.filter(t=>inRange(t,r.from,r.to)&&netExpense(t)).sort((a,b)=>netExpense(b)-netExpense(a)).slice(0,3);
   const ids=new Set([...cur.byCat.map(x=>x.cat),...prev.byCat.map(x=>x.cat)]);
   const ch=[...ids].map(id=>({c:catBy(id),d:(cur.byCat.find(x=>x.cat===id)?.amt||0)-(prev.byCat.find(x=>x.cat===id)?.amt||0)}));
@@ -65,9 +71,10 @@ function monthlyReview(r,pv,cur,prev){
   else{const d=cur.exp-prev.exp;msg=d<=0?`${lbl}より ${yen(-d)} 少なく済んでいます。この調子！`:`${lbl}より ${yen(d)} 多く使っています。${ups[0]?`いちばん増えたのは「${ups[0].c.name}」です。`:''}`}
   return `<section class="section"><div class="sec-h"><h2 class="s">${isCur?'今月':'この月'}のふりかえり</h2>${isCur?'<span class="pill">途中経過</span>':''}</div><div class="card">
    <p style="margin:0 0 12px;font-size:15px">${esc(msg)}</p>
-   <div class="stat3"><div><div class="label">支出0円の日</div><div class="v num">${zero}<span style="font-size:13px">日</span></div></div><div><div class="label">1日平均</div><div class="v num">${yen(avg)}</div></div><div><div class="label">支出の件数</div><div class="v num">${cur.count}<span style="font-size:13px">件</span></div></div></div>
+   <div class="stat3"><div><div class="label">0円の日</div><div class="v num">${dc.zero}<span style="font-size:13px">日</span></div></div><div><div class="label">記録なしの日</div><div class="v num">${dc.none}<span style="font-size:13px">日</span></div></div><div><div class="label">1日平均</div><div class="v num">${yen(avg)}</div></div></div>
+   ${dc.none?`<p class="sub" style="margin:8px 0 0">「記録なしの日」は、つけ忘れか0円かわからない日です。カレンダーで日付を押すと「0円でした」にできます。</p>`:''}
    ${hasPrev&&(ups.length||downs.length)?`<div class="grid2" style="margin-top:14px;align-items:start;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">${ups.length?`<div><div class="label">${lbl}より増えた</div>${ups.map(chRow).join('')}</div>`:''}${downs.length?`<div><div class="label">${lbl}より減った</div>${downs.map(chRow).join('')}</div>`:''}</div>`:''}
-   ${(()=>{const sk=skipTotals(r.from,r.to),ft=feelTotals(r.from,r.to);return sk.n||ft.bad?`<div style="margin-top:12px">${sk.n?`<div class="between" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="row" style="gap:8px;color:var(--primary)">${ic('piggy','sm')}<span style="color:var(--text-primary)">がまん貯金</span></span><span class="num"><b>${yen(sk.amt)}</b> <span class="sub">${sk.n}回</span></span></div>`:''}${ft.bad?`<div class="between" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="row" style="gap:8px">${faceSVG('bad',18)}モヤっと出費</span><span class="num"><b>${yen(ft.bad)}</b> <span class="sub">${ft.n.bad}件</span></span></div>`:''}</div>`:''})()}
+   ${(()=>{const sk=skipTotals(r.from,r.to),ft=feelTotals(r.from,r.to);return sk.n||ft.bad?`<div style="margin-top:12px">${sk.n?`<div class="between" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="row" style="gap:8px;color:var(--primary)">${ic('piggy','sm')}<span style="color:var(--text-primary)">がまん貯金</span></span><span class="num"><b>${yen(sk.amt)}</b> <span class="sub">${sk.n}回　移した ${yen(sk.moved)}</span></span></div>`:''}${ft.bad?`<div class="between" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="row" style="gap:8px">${faceSVG('bad',18)}モヤっと出費</span><span class="num"><b>${yen(ft.bad)}</b> <span class="sub">${ft.n.bad}件</span></span></div>`:''}</div>`:''})()}
    ${big.length?`<div class="label" style="margin-top:16px">大きな出費</div><div>${big.map(txRow).join('')}</div>`:''}
   </div></section>`;
 }
@@ -78,13 +85,17 @@ function calendarSection(r){
   const lead=(r.a.getDay()-ws+7)%7;const dim=r.b.getDate();
   const short=v=>v>=100000?Math.round(v/10000)+'万':v.toLocaleString('ja-JP');
   let cells=[...Array(7)].map((_,i)=>`<div class="wd" aria-hidden="true">${WD[(i+ws)%7]}</div>`).join('')+'<div aria-hidden="true"></div>'.repeat(lead);
-  for(let d=1;d<=dim;d++){const ds=`${r.a.getFullYear()}-${pad(r.a.getMonth()+1)}-${pad(d)}`;const v=vals[ds]||0;const fut=ds>t0;const q=v/max;const lv=v?(q<=.25?1:q<=.5?2:q<=.75?3:4):0;
-    cells+=`<button type="button" class="${lv?'l'+lv:''}${!v&&!fut?' zero':''}${fut?' fut':''}${ds===t0?' today':''}" data-act="iday" data-d="${ds}" aria-pressed="${S.ins.day===ds}" aria-label="${fmtDay(ds)} ${v?yen(v):fut?'':'支出なし'}"><span class="dn">${d}</span><span class="da">${v?short(v):fut?'&nbsp;':'0'}</span></button>`}
+  for(let d=1;d<=dim;d++){const ds=`${r.a.getFullYear()}-${pad(r.a.getMonth()+1)}-${pad(d)}`;const v=vals[ds]||0;const fut=ds>t0;const q=v/max;const lv=v?(q<=.25?1:q<=.5?2:q<=.75?3:4):0;const st=fut?'fut':dayState(ds);
+    const lab=v?yen(v):st==='zero'?'0円でした':st==='none'?'記録なし':'';const show=v?short(v):st==='zero'?'0':st==='none'?'—':'&nbsp;';
+    cells+=`<button type="button" class="${lv?'l'+lv:''}${st==='zero'?' zero':''}${st==='none'?' none':''}${fut?' fut':''}${ds===t0?' today':''}" data-act="iday" data-d="${ds}" aria-pressed="${S.ins.day===ds}" aria-label="${fmtDay(ds)} ${lab}"><span class="dn">${d}</span><span class="da">${show}</span></button>`}
   const sel=S.ins.day&&S.ins.day>=r.from&&S.ins.day<=r.to?S.ins.day:null;
   const dayList=sel?S.txns.filter(t=>t.date===sel):[];const dayTot=dayList.reduce((a,t)=>a+netExpense(t),0);
   return `<section class="section"><div class="sec-h"><h2 class="s">カレンダー</h2><span class="sub">日付をタップで記録を表示</span></div><div class="card"><div class="cal">${cells}</div>
-   <div class="cal-leg"><span>少</span><i style="background:var(--heat1)"></i><i style="background:var(--heat2)"></i><i style="background:var(--heat3)"></i><i style="background:var(--heat4)"></i><span>多</span><span style="margin-left:10px;color:var(--primary);font-weight:700">0</span><span>= 支出なし</span></div>
-   ${sel?`<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px"><div class="between" style="margin-bottom:2px"><b>${fmtDay(sel)}</b><span class="num sub">${dayTot?'支出 '+yen(dayTot):''}</span></div>${dayList.length?dayList.map(txRow).join(''):`<p class="sub" style="margin:6px 0 10px">この日の記録はありません。</p>`}<button class="btn soft sm" style="margin-top:8px" data-act="quickday" data-d="${sel}">${ic('plus','sm')}この日の記録を追加</button></div>`:''}
+   <div class="cal-leg"><span>少</span><i style="background:var(--heat1)"></i><i style="background:var(--heat2)"></i><i style="background:var(--heat3)"></i><i style="background:var(--heat4)"></i><span>多</span><span style="margin-left:10px;color:var(--primary);font-weight:700">0</span><span>= 0円でした</span><span style="margin-left:8px">—</span><span>= 記録なし</span></div>
+   ${sel?`<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px"><div class="between" style="margin-bottom:2px"><b>${fmtDay(sel)}</b><span class="num sub">${dayTot?'支出 '+yen(dayTot):''}</span></div>${(()=>{const st=dayState(sel);const fut=sel>today();
+     if(st==='zero')return `<p class="sub" style="margin:6px 0 10px">${ic('check','sm')} 0円の日として記録しています。</p><div class="grid2"><button class="btn ghost sm" data-act="unzeroday" data-d="${sel}">取り消す</button><button class="btn soft sm" data-act="quickday" data-d="${sel}">${ic('plus','sm')}記録を追加</button></div>`;
+     const list=dayList.length?dayList.map(txRow).join(''):`<p class="sub" style="margin:6px 0 10px">${fut?'まだ先の日です。':'この日の記録はありません。'}</p>`;
+     return list+(st==='none'&&!fut?`<div class="grid2" style="margin-top:8px"><button class="btn soft sm" data-act="zeroday" data-d="${sel}">${ic('check','sm')}0円でした</button><button class="btn ghost sm" data-act="quickday" data-d="${sel}">${ic('plus','sm')}記録を追加</button></div>`:`<button class="btn soft sm" style="margin-top:8px" data-act="quickday" data-d="${sel}">${ic('plus','sm')}この日の記録を追加</button>`)})()}</div>`:''}
   </div></section>`;
 }
 

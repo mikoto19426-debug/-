@@ -9,6 +9,9 @@ document.addEventListener('click',async e=>{
   if(a==='quick'){quickSheet({});return}
   if(a==='dot'){S.dotI++;S.dotHopAt=Date.now();render();return}
   if(a==='gaman'){gamanSheet();return}
+  if(a==='gmove'){gamanMoveSheet();return}
+  if(a==='gmoveok'){confirmMove(el);return}
+  if(a==='zeroday'||a==='unzeroday'){const d=el.dataset.d,on=a==='zeroday';try{await setZeroDay(d,on);if(on){S.dotHopAt=Date.now();toast('ドット：0円の日、ちゃんと記録できたね',{undo:()=>setZeroDay(d,false)})}else toast('取り消しました')}catch(err){toast(writeErr(err),{err:true})}return}
   if(a==='gamanlist'){gamanList();return}
   if(a==='gpick'){$('#g-name').value=el.dataset.n;$('#g-amt').value=el.dataset.a;$('#g-err').textContent='';return}
   if(a==='gsave'){saveGaman(el);return}

@@ -22,10 +22,15 @@ function quickCard(){
   <div class="grid2"><button class="btn primary" data-act="quick">${ic('plus','sm')}金額を入れる</button><button class="btn ghost" data-act="gaman">${ic('piggy','sm')}がまんした</button></div>
   ${fv.length?`<div><div class="label" style="margin-bottom:6px">いつもの（タップで今日の記録に追加）</div><div class="favs">${fv.map(favBtn).join('')}</div></div>`:''}</section>`;
 }
-function todayQuestion(){ // 問いかけは1つだけ。優先度の高いものから
+function todayQuestion(){ // 問いかけは1つだけ。①昨日の記録 ②夕方以降の今日の記録 ③数日前の「買ってよかった？」
+  const t0=today(),y=ymd(new Date(Date.now()-864e5)),first=firstRecordDate();
+  const askDay=(ds,label)=>`<section class="card sm ask enter" aria-labelledby="ah"><h2 class="label" id="ah" style="margin:0 0 4px">今日の問いかけ</h2><div style="font-weight:600">${label}は何か買った？</div><div class="sub">まだ記録がありません。使っていなければ「0円でした」を押してください。</div><div class="grid2" style="margin-top:10px"><button class="btn soft" data-act="zeroday" data-d="${ds}">${ic('check','sm')}0円でした</button><button class="btn ghost" data-act="quickday" data-d="${ds}">${ic('plus','sm')}記録する</button></div></section>`;
+  if(first&&first<=y&&dayState(y)==='none')return askDay(y,'昨日');
+  if(new Date().getHours()>=17&&dayState(t0)==='none')return askDay(t0,'今日');
   const t=unratedRecent()[0];if(!t)return '';
+  const ago=Math.round((parseD(t0)-parseD(t.date))/864e5);
   return `<section class="card sm ask enter" aria-labelledby="ah"><h2 class="label" id="ah" style="margin:0 0 4px">今日の問いかけ</h2>
-   <div class="between" style="align-items:flex-start"><div style="min-width:0"><div style="font-weight:600">「${esc(t.merchant||catBy(t.category).name)}」、買ってよかった？</div><div class="sub">${fmtDay(t.date)}　${esc(catBy(t.category).name)}</div></div><b class="num" style="flex:none">${yen(netExpense(t))}</b></div>
+   <div class="between" style="align-items:flex-start"><div style="min-width:0"><div style="font-weight:600">${ago}日前の「${esc(t.merchant||catBy(t.category).name)}」、買ってよかった？</div><div class="sub">${fmtDay(t.date)}　${esc(catBy(t.category).name)}</div></div><b class="num" style="flex:none">${yen(netExpense(t))}</b></div>
    <div class="feels">${feelButtons(t)}</div></section>`;
 }
 function homeView(){

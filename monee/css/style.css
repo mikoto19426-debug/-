@@ -335,6 +335,7 @@ dl.kv dd{margin:0;text-align:right;min-width:0;overflow-wrap:anywhere}
 .cal .da{font-size:10px;line-height:1.1;font-variant-numeric:tabular-nums;max-width:100%;overflow:hidden;white-space:nowrap}
 .cal .l1{background:var(--heat1)}.cal .l2{background:var(--heat2)}.cal .l3{background:var(--heat3)}.cal .l4{background:var(--heat4);color:var(--heat4-fg)}
 .cal .zero .da{color:var(--primary);font-weight:700}
+.cal .none .da{color:var(--text-muted)}
 .cal .fut{opacity:.45}
 .cal .today{box-shadow:inset 0 0 0 2px var(--primary)}
 .cal button[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--text-primary)}

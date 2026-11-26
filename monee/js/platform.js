@@ -17,6 +17,7 @@ async function boot(){
   },onErr);
   db.doc('config/settings').onSnapshot(snap=>{S.settingsDoc=snap.exists?snap.data():null;if(!snap.metadata.fromCache){S.ready.settings=true;done()}render()},onErr);
   db.collection('inbox').onSnapshot(snap=>{S.inbox=snap.docs.filter(d=>d.exists).map(d=>({...d.data(),id:d.id}));S.ready.inbox=true;render()},()=>{S.ready.inbox=true});
+  db.collection('days').onSnapshot(snap=>{const o={};snap.docs.forEach(d=>{if(d.exists)o[d.id]=d.data()});S.days=o;render()},()=>{});
   db.collection('skips').onSnapshot(snap=>{S.skips=snap.docs.filter(d=>d.exists).map(d=>({...d.data(),id:d.id})).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));render()},()=>{});
 }
 const ready=()=>S.ready.txns&&S.ready.settings;

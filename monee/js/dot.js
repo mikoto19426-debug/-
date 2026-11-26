@@ -22,9 +22,9 @@ function dotLines(){ // 先頭ほど大事。行動が必要なものは btn:[�
   else if(b&&exp/b*100>=st.alertAt)out.push({mood:'worried',text:`予算の${Math.round(exp/b*100)}%まで来たよ。残り${dl}日、1日${yen(Math.floor((b-exp)/dl))}ならいけるよ。`});
   const over=catBudgets(m.from,m.to).find(x=>x.used>x.bud);if(over)out.push({mood:'worried',text:`「${over.c.name}」が予算を${yen(over.used-over.bud)}こえてるよ。今月はちょっとおやすみしよう。`});
   // ほめる・気づき
-  const todayExp=S.txns.filter(t=>t.date===t0).reduce((a,t)=>a+netExpense(t),0);
-  if(!todayExp&&hr>=12)out.push({mood:'happy',text:'今日はまだ0円！このまま「なにも買わない日」にしちゃう？'});
-  const sk=skipTotals(m.from,m.to);if(sk.n)out.push({mood:'happy',text:`今月は${sk.n}回がまんして、${yen(sk.amt)}守ったね。えらい！`});
+  const zc=dayCounts(m.from,m.to).zero;if(zc)out.push({mood:'happy',text:`今月の「0円でした」は${zc}日。使わない日をちゃんと作れてるね。`});
+  const sk=skipTotals(m.from,m.to);if(sk.n)out.push({mood:'happy',text:`今月は${sk.n}回がまんしたね。そのうち${yen(sk.moved)}は本当に貯金できてるよ。`});
+  const gp=skipTotals('','');if(gp.nPending)out.push({mood:'calm',text:`まだ貯金に移していないがまんが${yen(gp.pending)}あるよ。本当に移したら「移した」を押してね。`,btn:['移した','data-act="gmove"']});
   const ft=feelTotals(m.from,m.to);if(ft.bad)out.push({mood:'calm',text:`今月のモヤっと出費は${yen(ft.bad)}。同じ場面が来たら、ひと呼吸おいてみよう。`});
   out.push({mood:'calm',text:hr<5?'夜ふかしさん、おつかれさま。今日の出費は記録できた？':hr<11?'おはよう。今日もいっしょにいこう。':hr<18?'こんにちは。使ったらすぐ記録がいちばんラクだよ。':'おつかれさま。今日の出費、記録し忘れてない？'});
   return out;
