@@ -2,686 +2,158 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&family=Cormorant+Garamond:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&family=Cormorant+Garamond:wght@600&display=swap">
 <style>
-/* Layout: a tall scroll track drives one fixed three.js view; the painting becomes a walkable 3D street. Single night look. */
+/* Layout: a tall scroll track scrubs a full-screen canvas of video frames; captions float low-center. Single night look. */
 :root {
   --night: #0c1636;
   --ink: #070d24;
   --gas: #f3c95c;
   --cream: #fbf0cf;
-  --ochre: #d99a3a;
   --muted: rgba(251, 240, 207, 0.55);
   --veil: rgba(7, 13, 36, 0.55);
   --font-jp: "Klee One", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
-  --font-fr: "Cormorant Garamond", "Times New Roman", serif;
+  --font-title: "Cormorant Garamond", "Times New Roman", serif;
   color-scheme: dark;
 }
 html { scrollbar-width: none; }
 html::-webkit-scrollbar { display: none; }
 body {
-  background: var(--night);
-  color: var(--cream);
+  background: var(--night); color: var(--cream);
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
-  -webkit-tap-highlight-color: transparent;
 }
-#track { height: 1600vh; }
+#track { height: 1500vh; }
+/* the real painting on the museum wall, zooming in before the walk begins */
+#museum { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 30%, #2a3530 0%, #141b19 60%, #0b100f 100%); display: grid; place-items: center; overflow: hidden; will-change: opacity; }
+#museum .frame { height: 62vh; aspect-ratio: 2348 / 2945; padding: 1.6vh; background: linear-gradient(135deg, #e8c060, #a87828 45%, #d9a845 70%, #7d561b); box-shadow: 0 2vh 6vh rgba(0,0,0,.6); transform-origin: 50% 50%; will-change: transform; }
+#museum img { display: block; width: 100%; height: 100%; object-fit: cover; }
+#credit { position: fixed; left: calc(14px + env(safe-area-inset-left, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); font-family: var(--font-jp); font-size: 11px; color: var(--muted); text-shadow: 0 0 6px var(--ink); pointer-events: none; max-width: 40vw; }
 #stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-#glow {
-  position: fixed; inset: 0; pointer-events: none; opacity: 0;
-  background: radial-gradient(ellipse at 50% 55%, rgba(255, 214, 120, 0.55), rgba(255, 170, 60, 0.18) 60%, rgba(255, 150, 50, 0.08));
-  mix-blend-mode: screen;
-}
 #cap {
-  position: fixed; left: 50%;
-  bottom: calc(11% + env(safe-area-inset-bottom, 0px));
-  transform: translate(-50%, 8px);
-  width: max-content; max-width: min(86vw, 30em);
-  padding: 0.6em 1.6em;
-  font-family: var(--font-jp); font-weight: 600;
-  font-size: clamp(16px, 2.3vw, 28px); line-height: 1.6;
-  text-align: center; color: var(--cream);
+  position: fixed; left: 50%; bottom: calc(11% + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 8px); width: max-content; max-width: min(86vw, 30em);
+  padding: 0.6em 1.6em; font-family: var(--font-jp); font-weight: 600;
+  font-size: clamp(16px, 2.3vw, 28px); line-height: 1.6; text-align: center;
   text-shadow: 0 0 14px var(--ink), 0 0 4px var(--ink);
   background: radial-gradient(ellipse at center, var(--veil) 0%, transparent 72%);
-  opacity: 0;
-  transition: opacity 0.8s ease, transform 0.9s cubic-bezier(.2,.9,.3,1.2);
+  opacity: 0; transition: opacity .8s ease, transform .9s cubic-bezier(.2,.9,.3,1.2);
   pointer-events: none; text-wrap: balance;
 }
 #cap.on { opacity: 1; transform: translate(-50%, 0); }
-#hint {
-  position: fixed; left: 50%;
-  bottom: calc(3.5% + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  color: var(--muted); font-family: var(--font-jp); font-size: 13px;
-  transition: opacity 0.6s ease; pointer-events: none;
-}
-#hint .mouse { width: 22px; height: 34px; border: 2px solid var(--muted); border-radius: 12px; position: relative; }
-#hint .mouse::after { content: ""; position: absolute; left: 50%; top: 6px; width: 3px; height: 7px; margin-left: -1.5px; border-radius: 2px; background: var(--gas); animation: wheel 1.8s ease-in-out infinite; }
-@keyframes wheel { 0% { transform: translateY(0); opacity: 1; } 70% { transform: translateY(10px); opacity: 0; } 100% { opacity: 0; } }
-#bonjour {
-  position: fixed; left: 50%; top: 80%;
-  transform: translate(-50%, -40%) scale(0.96);
-  font-family: var(--font-fr); font-weight: 600;
-  font-size: clamp(60px, 11vw, 180px); letter-spacing: 0.04em;
-  color: var(--cream);
-  text-shadow: 0 0 30px rgba(255, 214, 120, 0.9), 0 0 80px rgba(255, 180, 60, 0.6), 0 2px 0 var(--ochre);
-  opacity: 0;
-  transition: opacity 1.4s ease, transform 1.8s cubic-bezier(.2,.9,.3,1.1);
+#finale {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -40%) scale(.96);
+  font-family: var(--font-title); font-weight: 600; font-size: clamp(56px, 11vw, 170px);
+  text-shadow: 0 0 30px rgba(255, 214, 120, .9), 0 0 80px rgba(255, 180, 60, .6);
+  opacity: 0; transition: opacity 1.4s ease, transform 1.8s cubic-bezier(.2,.9,.3,1.1);
   pointer-events: none; white-space: nowrap;
 }
-#bonjour.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-#rail {
-  position: fixed;
-  right: calc(18px + env(safe-area-inset-right, 0px));
-  top: 50%; transform: translateY(-50%);
-  width: 3px; height: 120px; border-radius: 2px;
-  background: rgba(251, 240, 207, 0.2); pointer-events: none;
+#finale.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+#hint {
+  position: fixed; left: 50%; bottom: calc(3.5% + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  color: var(--muted); font-family: var(--font-jp); font-size: 13px; transition: opacity .6s ease; pointer-events: none;
 }
+#rail { position: fixed; right: calc(18px + env(safe-area-inset-right, 0px)); top: 50%; transform: translateY(-50%);
+  width: 3px; height: 120px; border-radius: 2px; background: rgba(251, 240, 207, .2); pointer-events: none; }
 #rail i { position: absolute; left: 0; top: 0; width: 100%; height: 0; border-radius: 2px; background: var(--gas); }
-#credit {
-  position: fixed;
-  left: calc(14px + env(safe-area-inset-left, 0px));
-  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
-  font-family: var(--font-jp); font-size: 11px; line-height: 1.5;
-  color: var(--muted); text-shadow: 0 0 6px var(--ink);
-  pointer-events: none; max-width: 40vw;
-}
-#top {
-  position: fixed; left: 50%;
-  bottom: calc(5% + env(safe-area-inset-bottom, 0px));
-  transform: translateX(-50%);
-  font-family: var(--font-jp); font-weight: 600; font-size: 15px;
-  color: var(--cream);
-  background: rgba(10, 18, 48, 0.6);
-  border: 1.5px solid rgba(243, 201, 92, 0.55);
-  border-radius: 999px; padding: 0.5em 1.4em; cursor: pointer;
-  opacity: 0; transition: opacity 0.6s ease;
-}
-#top.on { opacity: 1; }
-#top:focus-visible { outline: 3px solid var(--gas); outline-offset: 3px; }
-#loading {
-  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-  padding: 24px; text-align: center;
-  font-family: var(--font-jp); font-size: 16px; color: var(--muted);
-  background: var(--night); transition: opacity 0.8s ease;
-}
+#loading { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center;
+  font-family: var(--font-jp); color: var(--muted); background: var(--night); transition: opacity .8s ease; }
+#loading .bar { width: min(60vw, 280px); height: 3px; background: rgba(251, 240, 207, .2); border-radius: 2px; overflow: hidden; }
+#loading .bar i { display: block; height: 100%; width: 0; background: var(--gas); }
 #loading.gone { opacity: 0; pointer-events: none; }
-[hidden] { display: none !important; }
-@media (prefers-reduced-motion: reduce) { #hint .mouse::after { animation: none; } }
 </style>
 
 <div id="track"></div>
-<canvas id="stage" role="img" aria-label="ゴッホの「夜のカフェテラス」の中に入り、立体になった通りを歩いてカフェの前を進み、最後に麦わら帽子のゴッホに出会う。"></canvas>
-<div id="glow"></div>
+<canvas id="stage" role="img" aria-label="美術館のゴッホ「夜のカフェテラス」の中に入り、カフェのテラスを歩いて、麦わら帽子のフィンセントに出会う。"></canvas>
+<div id="museum"><div class="frame"><img src="cafe-terrace-at-night.jpg" alt="フィンセント・ファン・ゴッホ「夜のカフェテラス」1888年"></div></div>
 <div id="cap" aria-live="polite"></div>
-<div id="hint"><div class="mouse"></div><span>スクロール</span></div>
-<div id="bonjour" aria-hidden="true">Bonjour</div>
+<div id="credit">絵：フィンセント・ファン・ゴッホ「夜のカフェテラス」1888年（パブリックドメイン）／人物：MakeHuman＋Blender</div>
+<div id="finale" aria-hidden="true"></div>
+<div id="hint">スクロールしてね</div>
 <div id="rail" aria-hidden="true"><i></i></div>
-<div id="credit">フィンセント・ファン・ゴッホ「夜のカフェテラス」1888年／「麦わら帽子の自画像」1887年（パブリックドメイン）</div>
-<button id="top" type="button" hidden>最初から</button>
-<div id="loading">絵を運んでいます…</div>
+<div id="loading"><span>読み込み中…</span><div class="bar"><i></i></div></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 (() => {
 'use strict';
-const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
-const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
-const lerp = (a, b, t) => a + (b - a) * t;
-const ease = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
-const DEG = Math.PI / 180;
-const loadEl = document.getElementById('loading');
-if (!window.THREE) { loadEl.textContent = '3Dの部品を読み込めませんでした。ページを再読み込みしてください。'; return; }
-
-function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-const R = rng(1888);
-const pick = (arr, r = R) => arr[Math.floor(r() * arr.length)];
-
-/* ================= painted textures (every surface is made of brushstrokes) ================= */
-function stroke(c, x, y, a, len, w, col) {
-  const dx = Math.cos(a) * len / 2, dy = Math.sin(a) * len / 2;
-  c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(x - dx, y - dy);
-  c.quadraticCurveTo(x - dy * .2, y + dx * .2, x + dx, y + dy); c.stroke();
-}
-function strokeWrap(c, W, H, x, y, a, len, w, col) {
-  for (const ox of [-W, 0, W]) for (const oy of [-H, 0, H]) {
-    const px = x + ox, py = y + oy;
-    if (px > -len && px < W + len && py > -len && py < H + len) stroke(c, px, py, a, len, w, col);
-  }
-}
-function canvas(W, H, base) {
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-  const c = cv.getContext('2d'); c.lineCap = 'round';
-  if (base) { c.fillStyle = base; c.fillRect(0, 0, W, H); }
-  return [cv, c];
-}
-function fill(c, x0, y0, x1, y1, cols, ang, step, len, w, wrap, W, H) {
-  for (let y = y0; y < y1; y += step) for (let x = x0; x < x1; x += step) {
-    const px = x + (R() - .5) * step, py = y + (R() - .5) * step;
-    const a = typeof ang === 'function' ? ang(px, py) : ang + (R() - .5) * .5;
-    const L = len * (.7 + R() * .6), ww = w * (.7 + R() * .6), col = pick(cols);
-    if (wrap) strokeWrap(c, W, H, px, py, a, L, ww, col); else stroke(c, px, py, a, L, ww, col);
-  }
-}
-function toTex(cv, rep) {
-  const t = new THREE.CanvasTexture(cv);
-  t.anisotropy = 8;
-  if (rep) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-}
-
-const PAL = {
-  yellow: ['#f2c94c', '#f6d65e', '#e9b83a', '#fbe27e', '#efc244', '#dcae36'],
-  wall: ['#e8b84a', '#efc657', '#dba43c', '#f4d36c', '#d49a35', '#c7d05a'],
-  orange: ['#c96a2a', '#e0883a', '#b4552a', '#d97a34', '#e9a04a', '#a84a22'],
-  navy: ['#1f2756', '#263066', '#2d3874', '#1a2048', '#34407e', '#202a5e'],
-  slate: ['#5b6a8a', '#6e7ba0', '#4a5578', '#7c88aa', '#56628a', '#3f4a6e'],
-  green: ['#2f6b3a', '#3f8a46', '#1f4d2a', '#6aa860', '#4f9a50', '#2a5a34'],
-  lime: ['#8cc06a', '#a6cf6e', '#6aa84f', '#b8d878', '#7fb35a'],
-  cobble: ['#4c6598', '#6274ad', '#7f86bf', '#55848c', '#9aa2cc', '#3d5388', '#6a8fa0', '#8794c8']
+/* ===== CONFIG: edit only this block ===== */
+const CONFIG = {
+  frames: 240,
+  path: i => `frames/f${String(i + 1).padStart(4, '0')}.webp`,
+  start: 0.10,                    // scroll where the walk (frame 1) begins; before it, the museum
+  captions: [
+    [0.00, 0.06, '閉館後の美術館。一枚の絵だけが、まだ光っている。'],
+    [0.07, 0.12, '近づくと、絵の中から夜風が吹いてきた。'],
+    [0.14, 0.20, '見上げると、本物の星空。絵の中に、入ったんだ。'],
+    [0.24, 0.30, '左を向くと、黄色く光るカフェテラス。'],
+    [0.33, 0.40, 'テーブルのあいだを、ゆっくり歩いていく。'],
+    [0.43, 0.55, '夜の散歩をする人たちが、こちらへ歩いてきて……すれちがう。'],
+    [0.60, 0.70, 'テラスのすみに、麦わら帽子の男がいた。'],
+    [0.78, 0.86, '「やあ、きみも絵の中に来たのかい？」'],
+    [0.87, 0.94, '「ぼくはフィンセント。この夜を描いているところさ」']
+  ],
+  finale: { from: 0.955, text: 'Bonjour' },
+  firstBatch: 40
 };
+/* ======================================= */
 
-function texCobbles() {
-  const W = 512, H = 512, [cv, c] = canvas(W, H, '#252f5a');
-  for (let row = 0, y = 0; y < H; row++, y += 22) for (let x = (row % 2) * 18; x < W + 36; x += 36) {
-    const px = x + (R() - .5) * 8, py = y + (R() - .5) * 5, rx = 14 + R() * 4, ry = 8 + R() * 2, col = R() < .12 ? pick(['#c9a24a', '#b89048', '#d8b866']) : pick(PAL.cobble);
-    for (const ox of [-W, 0, W]) for (const oy of [-H, 0, H]) {
-      c.fillStyle = col; c.beginPath(); c.ellipse(px + ox, py + oy, rx, ry, (R() - .5) * .2, 0, Math.PI * 2); c.fill();
-      c.strokeStyle = 'rgba(15,20,45,.8)'; c.lineWidth = 3; c.stroke();
-    }
-    strokeWrap(c, W, H, px - 3, py - 3, 0, rx * 1.1, 3, 'rgba(230,236,255,.35)');
-  }
-  return toTex(cv, [14, 40]);
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
+const capEl = document.getElementById('cap'), finEl = document.getElementById('finale');
+const hintEl = document.getElementById('hint'), railEl = document.querySelector('#rail i');
+const loadEl = document.getElementById('loading'), barEl = document.querySelector('#loading .bar i');
+finEl.textContent = CONFIG.finale.text;
+
+const imgs = new Array(CONFIG.frames); let loaded = 0;
+function load(i) {
+  return new Promise(res => { const im = new Image(); im.decoding = 'async';
+    im.onload = () => { imgs[i] = im; loaded++; barEl.style.width = (loaded / CONFIG.frames * 100) + '%'; res(); };
+    im.onerror = () => res(); im.src = CONFIG.path(i); });
 }
-function texTerrace() {
-  const W = 512, H = 512, [cv, c] = canvas(W, H, '#c8742e');
-  fill(c, 0, 0, W, H, PAL.orange, 0, 9, 34, 7, true, W, H);
-  for (let x = 0; x < W; x += 64) strokeWrap(c, W, H, x, H / 2, Math.PI / 2 + (R() - .5) * .05, H, 3, 'rgba(110,40,15,.55)');
-  return toTex(cv, [3, 10]);
-}
-function texAwning(under) {
-  const W = 512, H = 512, [cv, c] = canvas(W, H, under ? '#e6a63a' : '#f0c444');
-  fill(c, 0, 0, W, H, under ? ['#f2b84a', '#e89a34', '#f8cf62', '#d98a2c', '#fbe08a'] : PAL.yellow, .12, 9, 40, 8, true, W, H);
-  return toTex(cv, [6, 2]);
-}
-function texCafeFront() {
-  // 28 m of shopfront: sun-yellow plaster, orange doors, glowing windows, a green bay and the dark pillar nearest us
-  const W = 2048, H = 320, [cv, c] = canvas(W, H, '#e3b046');
-  fill(c, 0, 0, W, H, PAL.wall, Math.PI / 2, 10, 30, 8);
-  const m = W / 28;
-  // green bay near the street corner
-  fill(c, 1.0 * m, 0, 4.2 * m, H, PAL.lime, Math.PI / 2, 9, 28, 8);
-  // dark blue pillar right at the corner
-  fill(c, 0, 0, 1.0 * m, H, ['#2b3a78', '#34478a', '#1f2c58', '#3a50a0'], Math.PI / 2, 8, 30, 8);
-  for (const d of [5.2, 8.6, 12.4, 16.2, 20.4, 24.2]) {
-    fill(c, d * m, H * .28, (d + 1.6) * m, H, ['#d07a2a', '#e08f38', '#b8621f', '#f0a448'], Math.PI / 2, 8, 22, 7);
-    c.strokeStyle = '#6a3a14'; c.lineWidth = 6; c.strokeRect(d * m, H * .28, 1.6 * m, H * .72);
-  }
-  for (const wdx of [2.0, 10.4, 18.2, 22.2]) {
-    fill(c, wdx * m, H * .25, (wdx + 1.4) * m, H * .72, ['#fff2b8', '#ffe594', '#fbd874', '#fff8d8'], 0, 7, 16, 6);
-    c.strokeStyle = '#7a4a1a'; c.lineWidth = 5; c.strokeRect(wdx * m, H * .25, 1.4 * m, H * .47);
-  }
-  // the café sign under the awning
-  fill(c, 6.6 * m, H * .06, 9.4 * m, H * .2, ['#5aa05a', '#7ab86a', '#4a8a4a'], 0, 6, 18, 6);
-  return toTex(cv);
-}
-function texUpper(seed) {
-  const r0 = rng(seed), W = 1024, H = 512, [cv, c] = canvas(W, H, '#56628a');
-  fill(c, 0, 0, W, H, PAL.slate, Math.PI / 2 + .1, 10, 30, 8);
-  for (let fl = 0; fl < 3; fl++) for (let i = 0; i < 9; i++) {
-    const x = 40 + i * 110 + (r0() - .5) * 10, y = 40 + fl * 160;
-    fill(c, x, y, x + 54, y + 92, ['#1a2148', '#232b58', '#141a3a'], Math.PI / 2, 6, 16, 6);
-    c.strokeStyle = '#2a3050'; c.lineWidth = 5; c.strokeRect(x, y, 54, 92);
-    fill(c, x - 18, y, x - 4, y + 92, ['#3e5a8a', '#4a6aa0'], Math.PI / 2, 5, 14, 5);
-    fill(c, x + 58, y, x + 72, y + 92, ['#3e5a8a', '#4a6aa0'], Math.PI / 2, 5, 14, 5);
-  }
-  c.strokeStyle = '#20243c'; c.lineWidth = 4;
-  for (let x = 0; x < W; x += 14) { c.beginPath(); c.moveTo(x, H - 60); c.lineTo(x, H - 6); c.stroke(); }
-  c.lineWidth = 7; c.beginPath(); c.moveTo(0, H - 60); c.lineTo(W, H - 60); c.stroke();
-  return toTex(cv);
-}
-function texHouse(seed, shop) {
-  const r0 = rng(seed), W = 512, H = 768, [cv, c] = canvas(W, H, '#1d2450');
-  fill(c, 0, 0, W, H, PAL.navy, Math.PI / 2, 9, 28, 8);
-  for (let fl = 0; fl < 4; fl++) for (let i = 0; i < 3; i++) {
-    if (shop && fl === 3) continue;
-    const x = 50 + i * 160, y = 60 + fl * 170, lit = r0() < .38;
-    fill(c, x, y, x + 70, y + 100, lit ? ['#f2c45a', '#e9b246', '#ffd77a', '#f8dc8a'] : ['#121638', '#181d44', '#0e1230'], Math.PI / 2, 6, 16, 6);
-    c.strokeStyle = '#0a0d22'; c.lineWidth = 6; c.strokeRect(x, y, 70, 100);
-  }
-  if (shop) {
-    for (let i = 0; i < 5; i++) {
-      const x = 20 + i * 96;
-      fill(c, x, H - 230, x + 80, H - 20, i % 2 ? ['#f0a040', '#f8c060', '#e08a2c'] : ['#3f9a4a', '#5ab05a', '#2f7a3a'], Math.PI / 2, 6, 18, 7);
-      c.strokeStyle = '#0a1a10'; c.lineWidth = 6; c.strokeRect(x, H - 230, 80, 210);
-    }
-    fill(c, 0, H - 270, W, H - 236, ['#c7462a', '#e0602e'], 0, 6, 22, 7);
-  }
-  return toTex(cv);
-}
-function texTree() {
-  const W = 256, H = 256, [cv, c] = canvas(W, H, '#2a5a34');
-  fill(c, 0, 0, W, H, PAL.green, (x, y) => Math.atan2(y - H / 2, x - W / 2) + Math.PI / 2, 6, 20, 6, true, W, H);
-  return toTex(cv, [2, 2]);
-}
-function texPlain(cols, base, ang = 0) {
-  const W = 128, H = 128, [cv, c] = canvas(W, H, base);
-  fill(c, 0, 0, W, H, cols, ang, 6, 18, 5, true, W, H);
-  return toTex(cv, [1, 1]);
-}
-function texSky() {
-  // Van Gogh's sky, swirling around the stars; u = around you, v = up/down
-  const W = 2048, H = 1024, [cv, c] = canvas(W, H, '#1a3580');
-  const g = c.createLinearGradient(0, 0, 0, H / 2); g.addColorStop(0, '#0f2560'); g.addColorStop(1, '#2a4fa0');
-  c.fillStyle = g; c.fillRect(0, 0, W, H / 2 + 40);
-  const swirls = [[.75, .30, 150, 1], [.70, .40, 90, -1], [.82, .24, 110, -1], [.62, .30, 120, 1], [.88, .38, 80, 1]].map(([u, v, r, d]) => [u * W, v * H, r, d]);
-  const flow = (x, y) => {
-    const a = .3 * Math.sin(x * .004 + y * .006) + .2 * Math.cos(y * .01);
-    let vx = Math.cos(a), vy = Math.sin(a) * .5;
-    for (const [sx, sy, r, d] of swirls) { const dx = x - sx, dy = y - sy, dd = Math.hypot(dx, dy) + 1e-3, w = Math.exp(-Math.pow(dd / r, 2)) * 2.6; vx += -dy / dd * d * w; vy += dx / dd * d * w; }
-    return Math.atan2(vy, vx);
-  };
-  fill(c, 0, 0, W, H * .56, ['#1a3580', '#21428f', '#2a52a6', '#163070', '#3462b8', '#1d3a88', '#4a78c8', '#5a88d4'], flow, 9, 26, 6, true, W, H);
-  for (let i = 0; i < 1400; i++) { const s = swirls[i % swirls.length], t = R() * 6.283, d = s[2] * (.3 + R() * .8); const x = s[0] + Math.cos(t) * d, y = s[1] + Math.sin(t) * d * .8; stroke(c, x, y, flow(x, y), 20 + R() * 14, 4, R() < .5 ? '#7fa4e4' : '#a8c4f0'); }
-  return toTex(cv);
+// load evenly spaced frames first so scrubbing works early, then fill the gaps
+const order = []; for (let step = 16; step >= 1; step = step >> 1) for (let i = 0; i < CONFIG.frames; i += step) if (!order.includes(i)) order.push(i);
+async function loadAll() { let k = 0; const next = async () => { while (k < order.length) await load(order[k++]); }; await Promise.all([next(), next(), next(), next()]); }
+
+let W = 0, H = 0;
+function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener('resize', resize);
+
+function nearest(i) { for (let r = 0; r < CONFIG.frames; r++) { if (imgs[i - r]) return imgs[i - r]; if (imgs[i + r]) return imgs[i + r]; } return null; }
+const museumEl = document.getElementById('museum'), frameEl = document.querySelector('#museum .frame');
+function draw(p) {
+  // museum: walk up to the painting until it fills the screen, then it melts into the walk
+  const k = clamp(p / CONFIG.start), e = k * k * (3 - 2 * k);
+  const full = Math.max(innerWidth / frameEl.offsetWidth, innerHeight / frameEl.offsetHeight) * 1.05;
+  frameEl.style.transform = `scale(${(1 + (full - 1) * e).toFixed(4)})`;
+  museumEl.style.opacity = (1 - clamp((p - CONFIG.start * .85) / (CONFIG.start * .3))).toFixed(3);
+  museumEl.style.visibility = p > CONFIG.start * 1.2 ? 'hidden' : 'visible';
+  const q = clamp((p - CONFIG.start) / (1 - CONFIG.start));
+  const im = nearest(Math.round(q * (CONFIG.frames - 1))); if (!im) return;
+  const s = Math.max(W / im.width, H / im.height), w = im.width * s, h = im.height * s;
+  ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
 }
 
-/* people, painted on cards like the dark little figures of the canvas */
-function texFigure(kind) {
-  const W = 256, H = 512, [cv, c] = canvas(W, H, null);
-  const shape = (pts, cols, ang = Math.PI / 2) => {
-    c.save(); c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) c.lineTo(p[0], p[1]); c.closePath();
-    c.clip(); fill(c, 0, 0, W, H, cols, ang, 6, 18, 6); c.restore();
-    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (const p of pts.slice(1)) c.lineTo(p[0], p[1]); c.closePath();
-    c.strokeStyle = 'rgba(12,14,30,.85)'; c.lineWidth = 4; c.stroke();
-  };
-  const oval = (x, y, rx, ry, cols, ang = 0) => {
-    c.save(); c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); c.clip(); fill(c, x - rx - 8, y - ry - 8, x + rx + 8, y + ry + 8, cols, ang, 5, 12, 5); c.restore();
-    c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); c.strokeStyle = 'rgba(12,14,30,.85)'; c.lineWidth = 3.5; c.stroke();
-  };
-  const skin = ['#d9a070', '#c98f62', '#b87a52'], dark = ['#1c2036', '#262a48', '#14182a', '#30304e'];
-  const hat = (cols) => { oval(128, 52, 34, 7, cols); shape([[108, 52], [110, 26], [146, 26], [148, 52]], cols); };
-  const bonnet = () => oval(128, 58, 26, 22, ['#f6f2e4', '#ffffff', '#e0dccb']);
-  const man = (coat, legs, arms) => {
-    shape([[112, 300], [128, 300], [124, 500], [104, 500]], legs); shape([[130, 300], [146, 300], [152, 500], [132, 500]], legs);
-    shape([[86, 104], [170, 104], [158, 310], [98, 310]], coat);
-    shape([[86, 106], [100, 110], [88, 280], [74, 276]], arms || coat); shape([[156, 110], [170, 106], [182, 276], [168, 280]], arms || coat);
-    oval(128, 72, 24, 28, skin);
-  };
-  const woman = (dress, top) => {
-    shape([[98, 230], [158, 230], [196, 505], [60, 505]], dress);
-    shape([[94, 104], [162, 104], [156, 240], [100, 240]], top || dress);
-    shape([[94, 108], [106, 112], [96, 250], [84, 246]], top || dress); shape([[150, 112], [162, 108], [172, 246], [160, 250]], top || dress);
-    oval(128, 76, 23, 27, skin);
-  };
-  switch (kind) {
-    case 'waiter': man(['#1c2036', '#262a48'], dark, ['#f6f2e4', '#ffffff']); shape([[100, 170], [156, 170], [166, 440], [90, 440]], ['#f6f2e4', '#ffffff', '#e8e2d0']); oval(128, 50, 22, 10, ['#1a1410', '#2a2018']); break;
-    case 'seatedM': man(dark, dark); hat(['#101018', '#1a1a28']); break;
-    case 'seatedW': woman(['#3a2a48', '#2a2038', '#4a3058', '#1f1a30']); bonnet(); break;
-    case 'yellow': man(['#e8c33a', '#f2d454', '#d0a830'], ['#c89a2a', '#b08424']); hat(['#e0b840', '#c8a030']); break;
-    case 'green': woman(['#7fae4a', '#93c25a', '#6a9a3c', '#a8cf6e'], ['#2a3050', '#343a60']); bonnet(); break;
-    case 'red': woman(['#a8402a', '#c0502e', '#8a3020', '#d0683a']); oval(128, 54, 24, 12, ['#2a1a18', '#3a2420']); break;
-    case 'dark': man(dark, dark); hat(['#101018', '#1a1a28']); break;
-  }
-  return toTex(cv);
-}
-function texCoat() {
-  const W = 256, H = 256, [cv, c] = canvas(W, H, null);
-  c.save(); c.beginPath(); c.moveTo(92, 30); c.lineTo(164, 30); c.lineTo(214, 80); c.lineTo(226, 250); c.lineTo(30, 250); c.lineTo(42, 80); c.closePath(); c.clip();
-  fill(c, 0, 0, W, H, ['#2a54a8', '#3566c0', '#1f3f88', '#4a7ad0', '#2d5cb4'], Math.PI / 2, 7, 22, 8); c.restore();
-  return toTex(cv);
-}
-
-/* ================= three.js ================= */
-const cv = document.getElementById('stage');
-const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-const world = new THREE.Scene(), museum = new THREE.Scene();
-world.background = new THREE.Color(0x0c1636); museum.background = new THREE.Color(0x0b100f);
-const cam = new THREE.PerspectiveCamera(60, 1, 0.05, 500);
-cam.rotation.order = 'YXZ';
-const uT = { value: 0 };
-
-const LAMPS = [new THREE.Vector3(-0.7, 3.0, -9.0), new THREE.Vector3(-1.8, 1.6, -13.5), new THREE.Vector3(5.0, 1.4, -18.0)];
-const PAINT_VS = `varying vec2 vUv; varying vec3 vW; varying float vD; uniform vec2 uRep;
-void main(){ vUv = uv*uRep; vec4 w = modelMatrix*vec4(position,1.); vW = w.xyz; vec4 mv = viewMatrix*w; vD = -mv.z; gl_Position = projectionMatrix*mv; }`;
-const PAINT_FS = `precision highp float;
-varying vec2 vUv; varying vec3 vW; varying float vD;
-uniform sampler2D uMap; uniform sampler2D uMap2; uniform float uTwo; uniform float uT; uniform float uSelf; uniform float uAlpha;
-uniform vec3 uLamps[3];
-float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
-  return mix(mix(hash(i),hash(i+vec2(1.,0.)),u.x), mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),u.x), u.y); }
-void main(){
-  vec2 wob = vec2(noise(vUv*6.+uT*.35), noise(vUv*6.+7.-uT*.3)) - .5;
-  vec2 uv = vUv + wob*.006;
-  vec4 tx = (uTwo > .5 && !gl_FrontFacing) ? texture2D(uMap2, uv) : texture2D(uMap, uv);
-  if (tx.a < .08) discard;
-  float fl = .93 + .05*sin(uT*7.3) + .03*sin(uT*12.7);
-  float l1 = exp(-pow(distance(vW, uLamps[0])/7.0, 2.))*.85*fl;
-  float l2 = exp(-pow(distance(vW, uLamps[1])/8.0, 2.))*.5;
-  float l3 = exp(-pow(distance(vW, uLamps[2])/5.0, 2.))*.5;
-  vec3 amb = vec3(.30,.35,.62);
-  vec3 lit = amb + vec3(1.,.78,.45)*(l1+l2+l3);
-  vec3 col = tx.rgb * mix(lit, vec3(.92), uSelf);
-  col = 1. - exp(-col*1.35);
-  col = mix(col, vec3(.06,.09,.24), smoothstep(30., 120., vD)*.55);
-  gl_FragColor = vec4(col, tx.a*uAlpha);
-}`;
-function paint(map, o = {}) {
-  return new THREE.ShaderMaterial({
-    vertexShader: PAINT_VS, fragmentShader: PAINT_FS, side: o.side || THREE.FrontSide,
-    transparent: !!o.transparent, depthWrite: o.depthWrite !== false,
-    uniforms: { uMap: { value: map }, uMap2: { value: o.map2 || map }, uTwo: { value: o.map2 ? 1 : 0 }, uT, uSelf: { value: o.self || 0 },
-      uAlpha: { value: 1 }, uRep: { value: new THREE.Vector2(...(o.rep || [1, 1])) }, uLamps: { value: LAMPS } }
-  });
-}
-const add = (geo, mat, x, y, z, ry = 0, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, 0); world.add(m); return m; };
-
-let flecks, vincent, vCoat, veil;
-const walkers = [], cards = [];
-function buildWorld(paintingTex, portraitTex) {
-  const T = {
-    cob: texCobbles(), ter: texTerrace(), awn: texAwning(false), awnU: texAwning(true), front: texCafeFront(),
-    up1: texUpper(3), up2: texUpper(9), tree: texTree(), sky: texSky(),
-    white: texPlain(['#f4efdc', '#ffffff', '#e4dcc4', '#d8d2c0'], '#efe8d4'),
-    wood: texPlain(['#3a2410', '#4a2e14', '#2a1a0a', '#5a3818'], '#33200e', Math.PI / 2),
-    darkBlue: texPlain(PAL.navy, '#1d2450', Math.PI / 2)
-  };
-  // street and terrace
-  add(new THREE.PlaneGeometry(40, 140), paint(T.cob, { rep: [14, 48] }), 1.5, 0, -50, 0, -Math.PI / 2);
-  add(new THREE.BoxGeometry(2.9, .14, 19), paint(T.ter, { rep: [1.5, 9] }), -0.75, .07, -14.5);
-  // the café: ground floor, upper storeys, awning
-  add(new THREE.PlaneGeometry(28, 4.4), paint(T.front, { self: .6 }), -2.2, 2.2, -16, Math.PI / 2);
-  add(new THREE.PlaneGeometry(28, 10.6), paint(T.up1), -2.2, 9.7, -16, Math.PI / 2);
-  add(new THREE.PlaneGeometry(26, 15), paint(T.up2), -2.2, 7.5, -43, Math.PI / 2);
-  const aw = new THREE.PlaneGeometry(3.1, 19, 1, 1);
-  const awMesh = add(aw, paint(T.awn, { map2: T.awnU, side: THREE.DoubleSide, self: .45, rep: [1.5, 9] }), -0.85, 3.65, -13.5, 0, -Math.PI / 2);
-  awMesh.rotateOnWorldAxis(new THREE.Vector3(0, 0, 1), -0.34);
-  // lantern
-  add(new THREE.BoxGeometry(.28, .4, .28), new THREE.MeshBasicMaterial({ color: 0xfff1b8 }), LAMPS[0].x, LAMPS[0].y, LAMPS[0].z);
-  add(new THREE.CylinderGeometry(.012, .012, .5), new THREE.MeshBasicMaterial({ color: 0x2a1a0a }), LAMPS[0].x, LAMPS[0].y + .45, LAMPS[0].z);
-  // tables and chairs on the terrace
-  const tableTop = paint(T.white, { self: .1 }), wood = paint(T.wood);
-  const tables = [[-1.6, -6.6], [-0.4, -7.6], [-1.5, -9.4], [-0.2, -10.6], [-1.5, -12.0], [-0.5, -13.9], [-1.6, -16.2], [-0.3, -17.6], [-1.5, -19.8], [-0.4, -21.4]];
-  tables.forEach(([x, z], i) => {
-    add(new THREE.CylinderGeometry(.36, .36, .04, 24), tableTop, x, .86, z);
-    add(new THREE.CylinderGeometry(.03, .04, .72, 8), wood, x, .5, z);
-    add(new THREE.CylinderGeometry(.18, .2, .03, 12), wood, x, .15, z);
-    for (const s of [-1, 1]) {
-      const cx = x + s * .55, cz = z + (i % 2 ? .15 : -.1);
-      add(new THREE.CylinderGeometry(.2, .2, .03, 14), wood, cx, .56, cz);
-      for (const [lx, lz] of [[-.13, -.13], [.13, -.13], [-.13, .13], [.13, .13]]) add(new THREE.CylinderGeometry(.015, .015, .42, 5), wood, cx + lx, .35, cz + lz);
-      const back = add(new THREE.TorusGeometry(.17, .018, 5, 14, Math.PI), wood, cx + s * .17, .78, cz, Math.PI / 2);
-      back.rotation.z = 0;
-    }
-  });
-  // houses across the street
-  let z0 = -2;
-  for (let i = 0; i < 7; i++) {
-    const w = 6 + (i * 37 % 4), h = 9 + (i * 53 % 5);
-    add(new THREE.PlaneGeometry(w, h), paint(texHouse(i + 1, i === 2), { self: .25 }), 5.2, h / 2, z0 - w / 2, -Math.PI / 2);
-    z0 -= w;
-  }
-  add(new THREE.PlaneGeometry(14, 12), paint(texHouse(40, true), { self: .25 }), 1.5, 6, -64);
-  // the tree on the right
-  const treeMat = paint(T.tree, { rep: [3, 3] });
-  [[4.3, 7.2, -9.5, 2.6], [3.6, 8.6, -11, 2.2], [4.6, 9.4, -12.5, 2.0], [4.1, 6.2, -12.8, 2.2]].forEach(([x, y, z, r]) => add(new THREE.IcosahedronGeometry(r, 1), treeMat, x, y, z));
-  add(new THREE.CylinderGeometry(.15, .22, 6), paint(T.wood), 4.3, 3, -11);
-  // the sky
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(200, 48, 24), new THREE.MeshBasicMaterial({ map: T.sky, side: THREE.BackSide, fog: false }));
-  world.add(sky);
-  buildStars(); buildFlecks();
-  buildPeople();
-  buildVincent(portraitTex);
-  buildVeil(paintingTex);
-}
-
-const starMeshes = [];
-function buildStars() {
-  const r0 = rng(7);
-  const mat = (seed) => new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uT, uI: { value: seed } },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-    fragmentShader: `uniform float uT; uniform float uI; varying vec2 vUv;
-      void main(){ vec2 p = vUv-.5; float d = length(p)*2.; float a = atan(p.y,p.x);
-        float tw = .75+.25*sin(uT*2.+uI*40.);
-        float core = exp(-d*d*22.);
-        float ring = exp(-pow((d-.5)/.11,2.))*(.55+.45*sin(a*5.-uT*1.3+uI*9.));
-        float halo = exp(-d*d*6.)*.4;
-        vec3 c = vec3(1.,.96,.75)*core*2. + vec3(.98,.9,.45)*ring*1.2 + vec3(.85,.95,.6)*halo*1.2;
-        gl_FragColor = vec4(c*tw*(1.-smoothstep(.85,1.,d)), 1.); }`
-  });
-  for (let i = 0; i < 28; i++) {
-    const az = (r0() - .5) * 90 * DEG, el = (18 + r0() * 50) * DEG, d = 170;
-    const size = (i < 7 ? 26 + r0() * 10 : 13 + r0() * 8);
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat(r0()));
-    m.position.set(-Math.sin(az) * Math.cos(el) * d, Math.sin(el) * d, -Math.cos(az) * Math.cos(el) * d);
-    m.renderOrder = 1; world.add(m); starMeshes.push(m);
-  }
-}
-function buildFlecks() {
-  const n = 380, p = [], ph = [];
-  for (let i = 0; i < n; i++) { p.push(lerp(-2, 5, Math.random()), lerp(.3, 7, Math.random()), lerp(-30, -1, Math.random())); ph.push(Math.random() * 6.28); }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); g.setAttribute('ph', new THREE.Float32BufferAttribute(ph, 1));
-  flecks = new THREE.Points(g, new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uT, uPx: { value: 1 }, uOn: { value: 0 } },
-    vertexShader: `attribute float ph; uniform float uT; uniform float uPx; varying float vA;
-      void main(){ vec3 p = position + vec3(sin(uT*.4+ph)*.25, sin(uT*.3+ph*2.)*.18, cos(uT*.35+ph)*.25);
-        vec4 mv = modelViewMatrix*vec4(p,1.); gl_Position = projectionMatrix*mv; gl_PointSize = uPx*(18./-mv.z); vA = .55+.45*sin(uT*1.7+ph*3.); }`,
-    fragmentShader: `uniform float uOn; varying float vA; void main(){ float d = length(gl_PointCoord-.5); gl_FragColor = vec4(vec3(1.,.82,.45)*(1.-smoothstep(0.,.5,d))*vA*uOn, 1.); }`
-  }));
-  world.add(flecks);
-}
-function card(tex, w, h, x, z, y0 = 0) {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), paint(tex, { transparent: true, side: THREE.DoubleSide }));
-  m.position.set(x, y0 + h / 2, z); world.add(m); cards.push(m); return m;
-}
-function buildPeople() {
-  const T = { waiter: texFigure('waiter'), m: texFigure('seatedM'), w: texFigure('seatedW'), yellow: texFigure('yellow'), green: texFigure('green'), red: texFigure('red'), dark: texFigure('dark') };
-  card(T.waiter, .9, 1.8, -0.95, -11.4);
-  [[-2.15, -6.5, 'm'], [-1.05, -6.7, 'w'], [-2.05, -9.3, 'w'], [-0.95, -9.5, 'm'], [0.25, -10.5, 'm'], [-2.05, -16.1, 'm'], [-0.95, -16.3, 'w'], [0.25, -17.5, 'w'], [-1.0, -19.7, 'm'], [-2.0, -12.0, 'w']]
-    .forEach(([x, z, k]) => card(T[k], .62, 1.25, x, z, .12));
-  // walkers stroll toward you down the street: [texture, x start, x pass, z start, distance]
-  [[T.yellow, 1.0, 1.0, -26, 24], [T.green, 2.0, 1.7, -30, 26], [T.dark, 2.5, 2.3, -30.6, 26], [T.red, 0.9, 1.4, -38, 30], [T.dark, 3.2, 3.0, -44, 30]]
-    .forEach(([tex, xs, xp, zs, dist], i) => { const m = card(tex, .85, 1.75, xs, zs); m.userData = { xs, xp, zs, dist, ph: i * 1.7 }; walkers.push(m); });
-}
-const VG = new THREE.Vector3(-1.45, 1.3, -14.25);
-function buildVincent(tex) {
-  vCoat = card(texCoat(), .78, .78, -1.45, -14.25, .5);
-  const g = new THREE.PlaneGeometry(.62, .62 / (2087 / 2700));
-  vincent = new THREE.Mesh(g, new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, side: THREE.DoubleSide,
-    uniforms: { uMap: { value: tex }, uOp: { value: 0 }, uT },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-    fragmentShader: `precision highp float; varying vec2 vUv; uniform sampler2D uMap; uniform float uOp; uniform float uT;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
-        return mix(mix(hash(i),hash(i+vec2(1.,0.)),u.x), mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),u.x), u.y); }
-      void main(){ vec2 uv = vec2(vUv.x, 1.-vUv.y);
-        vec2 dn = vec2(noise(uv*20.+uT*.2), noise(uv*20.+3.+uT*.2)) - .5;
-        vec3 c = texture2D(uMap, clamp(uv + dn*.0015, 0., 1.)).rgb;
-        float d = length((uv - vec2(.5,.47))*vec2(2.,1.75));
-        float edge = .8 + (noise(vec2(atan(uv.y-.5, uv.x-.5)*6., uT*.3))-.5)*.16;
-        gl_FragColor = vec4(c, (1. - smoothstep(edge-.12, edge, d))*uOp); }`
-  }));
-  vincent.position.copy(VG); world.add(vincent);
-}
-
-/* ================= the real painting: on the museum wall, then melting into the 3D street ================= */
-const A = 2348 / 2945, VP = [0.56, 0.52], F = 0.96;
-function paintingPlane(tex, dissolve) {
-  const g = new THREE.PlaneGeometry(A, 1);
-  const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
-  const m = new THREE.ShaderMaterial({
-    transparent: true, depthTest: !dissolve, depthWrite: !dissolve,
-    uniforms: { uMap: { value: tex }, uK: { value: 0 }, uT },
-    vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
-    fragmentShader: `precision highp float; varying vec2 vUv; uniform sampler2D uMap; uniform float uK; uniform float uT;
-      float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
-      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); vec2 u=f*f*(3.-2.*f);
-        return mix(mix(hash(i),hash(i+vec2(1.,0.)),u.x), mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),u.x), u.y); }
-      float fbm(vec2 p){ float v=0., a=.5; for(int i=0;i<4;i++){ v+=a*noise(p); p*=2.03; a*=.5; } return v; }
-      void main(){ vec3 c = texture2D(uMap, vUv).rgb;
-        float n = fbm(vec2(vUv.x*4.+vUv.y*1.2, vUv.y*22.-vUv.x*3.));
-        float a = 1. - smoothstep(n-.05, n+.05, uK*1.2-.1);
-        gl_FragColor = vec4(c, a); }`
-  });
-  const mesh = new THREE.Mesh(g, m);
-  mesh.position.set((0.5 - VP[0]) * A, -(0.5 - VP[1]) + 1.6, -F);
-  mesh.renderOrder = dissolve ? 999 : 0;
-  return mesh;
-}
-function buildVeil(tex) { veil = paintingPlane(tex, true); world.add(veil); }
-function buildMuseum(tex) {
-  const [cv2, c] = canvas(512, 512, '#141b19');
-  for (let i = 0; i < 9000; i++) { c.fillStyle = `rgba(${30 + R() * 25},${40 + R() * 25},${36 + R() * 20},.35)`; c.fillRect(R() * 512, R() * 512, 2, 6 + R() * 8); }
-  const g = c.createRadialGradient(256, 150, 10, 256, 220, 300); g.addColorStop(0, 'rgba(255,230,180,.22)'); g.addColorStop(1, 'rgba(255,230,180,0)');
-  c.fillStyle = g; c.fillRect(0, 0, 512, 512);
-  const cx = (0.5 - VP[0]) * A, cy = -(0.5 - VP[1]) + 1.6;
-  const wall = new THREE.Mesh(new THREE.PlaneGeometry(9, 6), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv2) }));
-  wall.position.set(cx, cy + .9, -F - .02); museum.add(wall);
-  museum.add(paintingPlane(tex, false));
-  const t = .07, gold = new THREE.MeshBasicMaterial({ color: 0xc9993c }), goldDk = new THREE.MeshBasicMaterial({ color: 0x8f6420 });
-  [[0, .5 + t / 2, A + 2 * t, t, gold], [0, -.5 - t / 2, A + 2 * t, t, goldDk], [-A / 2 - t / 2, 0, t, 1 + 2 * t, gold], [A / 2 + t / 2, 0, t, 1 + 2 * t, goldDk]].forEach(([x, y, w, h, m]) => {
-    const b = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m); b.position.set(cx + x, cy + y, -F + .005); museum.add(b);
-  });
-  const sh = new THREE.Mesh(new THREE.PlaneGeometry(A + .3, 1.3), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: .45 }));
-  sh.position.set(cx + .04, cy - .06, -F - .01); museum.add(sh);
-}
-
-/* ================= camera ================= */
-function startWindow(aspect) {
-  let H = A / aspect; if (H > 1) H = 1;
-  const W = H * aspect, vc = clamp(0.42, H / 2, 1 - H / 2);
-  const xl = (0.5 - VP[0]) * A - W / 2, yt = (vc - VP[1]) - H / 2;
-  return [xl / F, (xl + W) / F, -yt / F, -(yt + H) / F];
-}
-function setFrustum(aspect, blend, fovDeg) {
-  const s = startWindow(aspect), hh = Math.tan(fovDeg / 2 * DEG), hw = hh * aspect;
-  const n = cam.near;
-  cam.projectionMatrix.makePerspective(lerp(s[0], -hw, blend) * n, lerp(s[1], hw, blend) * n, lerp(s[2], hh, blend) * n, lerp(s[3], -hh, blend) * n, n, cam.far);
-  cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
-}
-// the walk: [scroll, x, y, z, yaw (deg, + looks left), pitch (deg), lens blend]
-const PATH = [
-  [0.13, 0.0, 1.60, 0.0, 0, 0, 0],      // standing where the painter stood
-  [0.17, 0.0, 1.60, 0.0, 0, 0, 0],      // the paint melts away
-  [0.24, 1.1, 1.60, -2.8, -8, 24, 1],   // step in, look up: the stars are real
-  [0.32, 0.5, 1.60, -4.4, 52, 3, 1],    // turn left: the café
-  [0.42, 0.25, 1.60, -9.0, 30, -2, 1],  // walk along the terrace
-  [0.50, 0.35, 1.60, -11.6, -6, -1, 1], // look ahead: people strolling this way
-  [0.58, 0.35, 1.60, -12.6, -10, -1, 1],// they pass by
-  [0.66, 0.30, 1.60, -12.9, 52, -6, 1], // back to the terrace
-  [0.80, -0.75, 1.45, -13.65, 50, -4, 1],// walk up to the painter
-  [0.92, -1.00, 1.36, -13.92, 48, -2, 1],// face to face
-  [1.00, -1.02, 1.36, -13.95, 48, -2, 1]
-];
-function samplePath(p) {
-  if (p <= PATH[0][0]) return PATH[0].slice(1);
-  for (let i = 0; i < PATH.length - 1; i++) {
-    const a = PATH[i], b = PATH[i + 1];
-    if (p <= b[0]) { const t = ease((p - a[0]) / (b[0] - a[0])); return a.slice(1).map((v, k) => lerp(v, b[k + 1], t)); }
-  }
-  return PATH[PATH.length - 1].slice(1);
-}
-const CAPS = [
-  [0.00, 0.05, '閉館後の美術館。一枚の絵だけが、まだ光っている。'],
-  [0.06, 0.12, '近づくと、絵の中から夜風が吹いてきた。'],
-  [0.14, 0.18, '絵の具が、とけていく……'],
-  [0.20, 0.27, '見上げると、本物の星空。絵の中に、入ったんだ。'],
-  [0.29, 0.36, '左を向くと、黄色く光るカフェテラス。'],
-  [0.38, 0.46, 'テーブルのあいだを、ゆっくり歩いていく。'],
-  [0.48, 0.58, '夜の散歩をする人たちが、こちらへ歩いてきて……すれちがう。'],
-  [0.62, 0.71, 'テラスのすみに、麦わら帽子の男がいた。'],
-  [0.76, 0.85, '「やあ、きみも絵の中に来たのかい？」'],
-  [0.86, 0.94, '「ぼくはフィンセント。この夜を描いているところさ」']
-];
-
-/* ================= DOM + loop ================= */
-const capEl = document.getElementById('cap'), hintEl = document.getElementById('hint');
-const bonEl = document.getElementById('bonjour'), railEl = document.querySelector('#rail i');
-const topEl = document.getElementById('top'), glowEl = document.getElementById('glow');
-topEl.addEventListener('click', () => window.scrollTo({ top: 0, behavior: RM ? 'auto' : 'smooth' }));
-let target = 0, sp = 0, capIdx = -2, mx = 0, my = 0, smx = 0, smy = 0;
-function readScroll() { const max = document.documentElement.scrollHeight - window.innerHeight; target = max > 0 ? clamp(window.scrollY / max) : 0; }
-window.addEventListener('scroll', readScroll, { passive: true });
-window.addEventListener('pointermove', e => { mx = e.clientX / window.innerWidth * 2 - 1; my = e.clientY / window.innerHeight * 2 - 1; }, { passive: true });
-function resize() {
-  renderer.setSize(window.innerWidth, window.innerHeight, false);
-  const px = renderer.getPixelRatio() * window.innerHeight / 900;
-  if (flecks) flecks.material.uniforms.uPx.value = px * 6;
-}
-window.addEventListener('resize', resize);
-function updateDom(p) {
-  let idx = -1;
-  CAPS.forEach((c, i) => { if (p >= c[0] && p <= c[1]) idx = i; });
-  if (idx !== capIdx) {
-    capIdx = idx; capEl.classList.remove('on');
-    if (idx >= 0) { capEl.textContent = CAPS[idx][2]; void capEl.offsetWidth; capEl.classList.add('on'); }
-  }
-  hintEl.style.opacity = p < .03 ? 1 : 0;
-  bonEl.classList.toggle('on', p > .955);
-  glowEl.style.opacity = smooth(.93, 1, p).toFixed(3);
-  const end = p > .975; topEl.hidden = !end && !topEl.classList.contains('on'); topEl.classList.toggle('on', end);
-  railEl.style.height = (p * 100).toFixed(1) + '%';
-}
-let last = performance.now() / 1000;
-function frame() {
-  const now = performance.now() / 1000, dt = Math.min(.05, now - last); last = now;
-  sp += (target - sp) * (1 - Math.exp(-dt * (RM ? 12 : 4)));
-  if (Math.abs(target - sp) < 1e-5) sp = target;
-  smx += (mx - smx) * (1 - Math.exp(-dt * 3)); smy += (my - smy) * (1 - Math.exp(-dt * 3));
-  uT.value = now % 1000;
-  const aspect = window.innerWidth / window.innerHeight;
-  if (sp < PATH[0][0]) {
-    const k = ease(clamp(sp / PATH[0][0]));
-    cam.position.set(0, 1.6 + lerp(-0.05, 0, k), lerp(3.4, 0, k)); cam.rotation.set(0, 0, 0);
-    setFrustum(aspect, 0, 60);
-    renderer.render(museum, cam);
-  } else {
-    const [x, y, z, yaw, pitch, blend] = samplePath(sp);
-    const look = RM ? 0 : smooth(.17, .24, sp);
-    cam.position.set(x, y, z);
-    let yw = yaw * DEG - smx * .08 * look, pt = pitch * DEG - smy * .05 * look;
-    if (sp > .72) {
-      const dx = VG.x - x, dz = VG.z - z, dy = VG.y + .05 - y;
-      const w = smooth(.72, .82, sp);
-      yw = lerp(yw, Math.atan2(-dx, -dz), w); pt = lerp(pt, Math.atan2(dy, Math.hypot(dx, dz)), w);
-    }
-    cam.rotation.set(pt, yw, 0);
-    setFrustum(aspect, blend, 64);
-    veil.material.uniforms.uK.value = smooth(.135, .175, sp);
-    veil.visible = sp < .18;
-    flecks.material.uniforms.uOn.value = smooth(.17, .26, sp);
-    vincent.material.uniforms.uOp.value = smooth(.55, .64, sp);
-    vCoat.material.uniforms.uAlpha.value = smooth(.55, .64, sp);
-    const k = smooth(.40, .62, sp);
-    walkers.forEach(m => {
-      const u = m.userData;
-      m.position.set(lerp(u.xs, u.xp, smooth(0, .5, k)), .875 + (RM ? 0 : Math.abs(Math.sin(now * 4 + u.ph)) * .04), u.zs + u.dist * k);
-    });
-    for (const m of cards) m.rotation.y = Math.atan2(cam.position.x - m.position.x, cam.position.z - m.position.z);
-    vincent.rotation.y = Math.atan2(cam.position.x - VG.x, cam.position.z - VG.z);
-    for (const m of starMeshes) m.quaternion.copy(cam.quaternion);
-    renderer.render(world, cam);
-  }
-  updateDom(sp);
+let target = 0, sp = 0, last = performance.now(), capIdx = -2;
+function readScroll() { const max = document.documentElement.scrollHeight - innerHeight; target = max > 0 ? clamp(scrollY / max) : 0; }
+addEventListener('scroll', readScroll, { passive: true });
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  sp += (target - sp) * (1 - Math.exp(-dt * 6)); if (Math.abs(target - sp) < 1e-5) sp = target;
+  draw(sp);
+  let idx = -1; CONFIG.captions.forEach((c, i) => { if (sp >= c[0] && sp <= c[1]) idx = i; });
+  if (idx !== capIdx) { capIdx = idx; capEl.classList.remove('on'); if (idx >= 0) { capEl.textContent = CONFIG.captions[idx][2]; void capEl.offsetWidth; capEl.classList.add('on'); } }
+  finEl.classList.toggle('on', sp >= CONFIG.finale.from);
+  hintEl.style.opacity = sp < .02 ? 1 : 0;
+  railEl.style.height = (sp * 100).toFixed(1) + '%';
   requestAnimationFrame(frame);
 }
 
-const loader = new THREE.TextureLoader();
-const loadTex = src => new Promise((res, rej) => loader.load(src, t => { t.flipY = false; t.anisotropy = 8; res(t); }, undefined, rej));
-Promise.all([loadTex('cafe-terrace-at-night.jpg'), loadTex('self-portrait-straw-hat.jpg')]).then(([a, b]) => {
-  buildWorld(a, b); buildMuseum(a);
-  resize(); readScroll(); sp = target;
-  loadEl.classList.add('gone');
-  requestAnimationFrame(frame);
-}).catch(e => { console.error(e); loadEl.textContent = '絵を読み込めませんでした。ページを再読み込みしてください。'; });
+resize();
+const all = loadAll();
+(async () => {
+  while (loaded < Math.min(CONFIG.firstBatch, CONFIG.frames)) await new Promise(r => setTimeout(r, 50));
+  loadEl.classList.add('gone'); readScroll(); sp = target; requestAnimationFrame(frame);
+  await all;
+})();
 })();
 </script>
-
