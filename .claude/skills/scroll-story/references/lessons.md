@@ -21,3 +21,10 @@ Newest at the bottom. Each line: date, what happened, what to do next time.
 - Playwright WebGL: launch Chromium with `--use-gl=swiftshader --enable-webgl --ignore-gpu-blocklist`.
 - GLSL: never call `smoothstep` with edge0 > edge1; it is undefined and some GPUs return nothing. Write `1. - smoothstep(a, b, x)`.
 - Wrap the page in `<!doctype html>…<body>` only for local tests; the published file has no skeleton.
+
+## 2026-11-26 Free 3D people with Blender + MakeHuman (MPFB2)
+- Install MPFB2 from a git clone zipped as an extension: `bpy.ops.extensions.package_install_files(repo='user_default', enable_on_install=True)` then `addon_utils.enable('bl_ext.user_default.mpfb')`.
+- Particle hair is invisible at scene scale unless `root_radius=1` and `radius_scale≈0.0007` (default 0.01 is huge/odd). Use the COLOR parametrization for hair color.
+- Cycles CPU, 1280x720, 16 spp + OIDN ≈ 50 s/frame here; 240 frames ≈ 3.3 h. Background jobs stop at 2 h, so render in ranges (`START END`) and resume from the first missing frame; name outputs by frame number.
+- Painterly post (structure-tensor strokes, fixed seed) + bloom over plain renders reads as "Van Gogh-like" and hides the CG look; fixed seed keeps flicker low.
+- 240 WebP frames ≈ 15 MB; publish with `files` + `root` (≤255 files per publish).
