@@ -1,5 +1,35 @@
 "use strict";
-/* ================= Quick sheet ================= */
+/* すばやく記録：カテゴリ推測・いつもの・店名候補・シート */
+function lastMethod(cat){const ms=settings().methods;const t=S.txns.find(x=>x.type!=='transfer'&&x.method&&ms.includes(x.method)&&(!cat||x.category===cat));return t?t.method:(cat?lastMethod(''):'')}
+const KW=[
+ [/スタバ|スターバックス|ドトール|タリーズ|コメダ|カフェ|喫茶|coffee|cafe|マクドナルド|マック|モスバーガー|ケンタッキー|すき家|松屋|吉野家|なか卯|ラーメン|うどん|そば|定食|レストラン|ランチ|ディナー|居酒屋|サイゼ|ガスト|学食|食堂/i,'cafe'],
+ [/セブン|ローソン|ファミリーマート|ファミマ|ミニストップ|スーパー|まいばすけっと|イオン|西友|成城石井|業務スーパー|生協|購買|弁当|食材|自販機|自動販売機/i,'food'],
+ [/suica|pasmo|icoca|電車|バス代|タクシー|メトロ|地下鉄|新幹線|uber|定期券|交通費/i,'transport'],
+ [/マツキヨ|マツモトキヨシ|ダイソー|セリア|キャンドゥ|無印|ドラッグ|薬局|ニトリ|ロフト|ハンズ|日用品|洗剤|ティッシュ/i,'daily'],
+ [/docomo|ドコモ|ソフトバンク|楽天モバイル|ahamo|povo|linemo|ワイモバイル|wi-?fi|通信費|スマホ代|携帯代/i,'phone'],
+ [/書店|本屋|紀伊國屋|ジュンク|丸善|教科書|参考書|udemy|講座|検定|受験|文房具/i,'study'],
+ [/ユニクロ|ジーユー|zara|美容院|美容室|ヘアサロン|コスメ|化粧品/i,'beauty'],
+ [/飲み会|プレゼント|ギフト|誕生日|お祝い|割り勘/i,'social'],
+ [/映画|ゲーム|steam|netflix|spotify|ライブ|チケット|カラオケ|推し|グッズ/i,'hobby'],
+ [/バイト代|給料|給与|アルバイト/i,'job'],
+ [/仕送り|お小遣い|おこづかい/i,'allow'],
+];
+function guessCat(merchant,kind){ // 過去の同じ店の記録 → キーワードの順で推測
+  const k=norm(merchant);if(!k)return '';
+  const ok=id=>cats(kind).some(c=>c.id===id);
+  const cnt={};for(const t of S.txns){if(t.type!==kind||!t.category||!ok(t.category))continue;const m=norm(t.merchant);if(m&&(m===k||(k.length>=2&&m.startsWith(k))))cnt[t.category]=(cnt[t.category]||0)+1}
+  const best=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];if(best)return best[0];
+  for(const [re,id] of KW)if(re.test(merchant)&&ok(id))return id;
+  return '';
+}
+function favorites(){ // 直近120日で2回以上つけた「店＋カテゴリ＋金額」
+  const since=ymd(new Date(Date.now()-120*864e5));const m={};
+  for(const t of S.txns){if(t.date<since||t.type!=='expense'||!live(t)||!t.merchant||!t.category)continue;const k=norm(t.merchant)+'|'+t.category+'|'+toInt(t.amount);if(!m[k])m[k]={n:0,t};m[k].n++}
+  return Object.values(m).filter(x=>x.n>=2).sort((a,b)=>b.n-a.n||(b.t.date||'').localeCompare(a.t.date||'')).slice(0,8).map(x=>x.t);
+}
+function merchantList(){const m={};S.txns.forEach(t=>{const v=String(t.merchant||'').trim();if(v&&t.type!=='transfer')m[v]=(m[v]||0)+1});return Object.entries(m).sort((a,b)=>b[1]-a[1]).slice(0,40).map(x=>x[0])}
+const merchantDL=()=>`<datalist id="dl-m">${merchantList().map(v=>`<option value="${esc(v)}"></option>`).join('')}</datalist>`;
+function buildTxn(d,source){const now=new Date().toISOString();return {type:d.type,status:'confirmed',amount:toInt(d.amount),date:d.date||today(),time:d.time||'',merchant:String(d.merchant||'').trim(),category:d.type==='transfer'?'':(d.category||''),method:d.method||'',toMethod:d.toMethod||'',note:d.note||'',items:d.items||[],discount:0,tax:0,taxIncluded:true,receiptAssetId:null,source,refunded:0,refunds:[],recurringId:null,inboxId:null,createdAt:now,updatedAt:now}}
 function quickSheet(p={}){
   const type=p.type==='income'?'income':'expense';
   const q={type,amount:p.amount?String(toInt(p.amount)):'',merchant:p.merchant||'',category:p.category||'',method:'',date:p.date||today(),catAuto:false,dupAck:false};
@@ -35,37 +65,5 @@ async function saveQuick(btn){
   if(dup.length&&!q.dupAck){q.dupAck=true;err.innerHTML=`同じような記録があります：${dup.map(t=>`${fmtShort(t.date)} ${esc(t.merchant||'')} ${yen(t.amount)}`).join('、')}<br>重複でなければ、もう一度「記録する」を押してください。`;return}
   const id=uid();busy(btn,true);
   try{await saveTxn(id,buildTxn(d,'quick'));closeSheet();toast(`${yen(amt)}を記録しました`,{undo:()=>S.db.collection('txns').doc(id).delete()})}catch(e){busy(btn,false);toast(writeErr(e),{err:true})}
-}
-
-/* ================= Gaman sheets ================= */
-function gamanSheet(){
-  const fv=favorites();const goals=settings().goals;
-  openSheet(`${sheetHead('がまんした！')}<p class="sub" style="margin-top:0">買うのをやめたものを記録すると、その金額が「がまん貯金」に貯まります。</p>
-  <div class="stack" style="gap:14px">
-   ${fv.length?`<div><div class="label" style="margin-bottom:6px">いつものをがまん</div><div class="favs">${fv.map(t=>`<button type="button" class="fav" data-act="gpick" data-n="${esc(t.merchant)}" data-a="${toInt(t.amount)}">${catIcon(catBy(t.category))}<span style="min-width:0"><span class="fn ell" style="display:block">${esc(t.merchant)}</span><span class="fa num">${yen(t.amount)}</span></span></button>`).join('')}</div></div>`:''}
-   <label class="field"><span>がまんしたもの</span><input id="g-name" class="input" maxlength="40" list="dl-m" autocomplete="off" placeholder="例：コンビニのお菓子">${merchantDL()}</label>
-   <label class="field"><span>金額</span><div class="amount-wrap"><input id="g-amt" class="input amount-in num" inputmode="numeric" autocomplete="off" placeholder="0"></div></label>
-   ${goals.length?`<label class="field"><span>貯金の目標にも足す（任意）</span><select id="g-goal" class="input"><option value="">足さない</option>${goals.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select><span class="sub">実際に貯金箱や口座へ移したときだけ選んでください。</span></label>`:''}
-   <div id="g-err" class="sub" role="alert" style="color:var(--danger)"></div>
-   <button class="btn primary block" data-act="gsave" style="min-height:52px">${ic('piggy','sm')}がまん貯金に入れる</button>
-  </div>`,{label:'がまんした'});
-  $('#g-name')?.focus();
-}
-async function saveGaman(btn){
-  const n=$('#g-name').value.trim(),a=toInt($('#g-amt').value),gid=$('#g-goal')?.value||'';
-  if(a<=0){$('#g-err').textContent='金額を入力してください。';$('#g-amt').focus();return}
-  const id=uid();busy(btn,true);let prevGoals=null;
-  try{
-    await S.db.collection('skips').doc(id).set({name:n||'がまん',amount:a,date:today(),goalId:gid||null,createdAt:new Date().toISOString()});
-    if(gid){const st=settings();prevGoals=st.goals;await saveSettings({goals:st.goals.map(g=>g.id===gid?{...g,saved:toInt(g.saved)+a}:g)})}
-    closeSheet();S.dotI=0;S.dotHopAt=Date.now();render();
-    toast(`ドット：${yen(a)} 守ったね！`,{undo:async()=>{await S.db.collection('skips').doc(id).delete();if(prevGoals)await saveSettings({goals:prevGoals})}});
-  }catch(e){busy(btn,false);toast(writeErr(e),{err:true})}
-}
-function gamanList(){
-  const all=skipTotals('','');
-  openSheet(`${sheetHead('がまん貯金の記録')}<div class="row" style="gap:14px;margin-bottom:8px">${jarSVG(all.n)}<div><div class="label">これまでの合計</div><div class="num" style="font-size:28px;font-weight:600">${yen(all.amt)}</div><div class="sub">${all.n}回がまんしました</div></div></div>
-  <div>${S.skips.slice(0,60).map(x=>`<div class="between" style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="min-width:0"><div class="ell" style="font-weight:500">${esc(x.name)}</div><div class="sub">${fmtDay(x.date)}${x.goalId?' · 目標に追加済み':''}</div></div><div class="row" style="gap:4px;flex:none"><b class="num">${yen(x.amount)}</b><button class="iconbtn" data-act="gdel" data-id="${esc(x.id)}" aria-label="${esc(x.name)}を削除">${ic('trash','sm')}</button></div></div>`).join('')}</div>
-  <p class="sub" style="margin-bottom:0">削除しても、貯金の目標に足した金額はそのままです（設定の「貯金の目標」で直せます）。</p>`,{label:'がまん貯金の記録'});
 }
 

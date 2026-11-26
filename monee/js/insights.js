@@ -88,15 +88,34 @@ function calendarSection(r){
   </div></section>`;
 }
 
+/* ---------- お知らせ（ふりかえりの先頭に出す） ---------- */
+function notices(){
+  const st=settings();const out=[];const m=rangeOf('month');const {exp}=totals(m.from,m.to);
+  const pend=S.inbox.filter(x=>x.status==='pending'||(x.status==='snoozed'&&(x.snoozeUntil||'')<=today()));
+  if(pend.length)out.push(`<button class="notice info" style="width:100%;text-align:left;border:1px solid var(--info-border)" data-go="add">${ic('mail')}<div style="flex:1"><b>確認待ちの候補が${pend.length}件</b><div class="sub">メールなどから見つかった支出です。確認してから保存されます。</div></div>${ic('right','sm')}</button>`);
+  if(st.budget&&exp>toInt(st.budget))out.push(`<div class="notice danger">${ic('alert')}<div><b>予算を${yen(exp-toInt(st.budget))}超えています</b><div class="sub">残りの日は大きな出費を控えめに。</div></div></div>`);
+  else if(st.budget&&exp/toInt(st.budget)*100>=st.alertAt)out.push(`<div class="notice warn">${ic('alert')}<div><b>予算の${Math.round(exp/toInt(st.budget)*100)}%を使いました</b><div class="sub">残りは ${yen(toInt(st.budget)-exp)} です。</div></div></div>`);
+  for(const x of catBudgets(m.from,m.to).slice(0,3)){if(x.used>x.bud)out.push(`<div class="notice danger">${ic('alert')}<div><b>${esc(x.c.name)}が予算を${yen(x.used-x.bud)}超えました</b><div class="sub num">${yen(x.used)} ／ 予算 ${yen(x.bud)}</div></div></div>`);else if(x.pct>=st.alertAt)out.push(`<div class="notice warn">${ic('alert')}<div><b>${esc(x.c.name)}が予算の${Math.round(x.pct)}%に達しました</b><div class="sub num">残り ${yen(x.bud-x.used)}</div></div></div>`)}
+  const drafts=S.txns.filter(t=>t.status==='draft');
+  if(drafts.length)out.push(`<button class="notice warn" style="width:100%;text-align:left" data-act="drafts">${ic('pencil')}<div style="flex:1"><b>下書きが${drafts.length}件あります</b><div class="sub">確定するまで集計には入りません。</div></div>${ic('right','sm')}</button>`);
+  const d=new Date().getDate();
+  for(const r of st.recurring){if(toInt(r.day)>d)continue;const has=S.txns.some(t=>t.recurringId===r.id&&inRange(t,m.from,m.to));if(!has)out.push(`<div class="notice plain">${ic('repeat')}<div style="flex:1"><b>${esc(r.name)}（${yen(r.amount)}）</b><div class="sub">毎月${toInt(r.day)}日の定期支払いが今月まだ記録されていません。</div></div><button class="btn soft sm" data-act="recur" data-id="${esc(r.id)}">記録</button></div>`)}
+  // simple observation from real data
+  const p=rangeOf('month',-1);const cur=totals(m.from,m.to).byCat,prev=totals(p.from,p.to).byCat;
+  const dayN=new Date().getDate(),dim=m.b.getDate();
+  for(const x of cur){const pv=prev.find(y=>y.cat===x.cat);if(pv&&x.amt>pv.amt&&x.amt>=3000){out.push(`<div class="notice plain">${ic('sparkles')}<div><b>${esc(x.c.name)}が先月の合計を上回りました</b><div class="sub num">今月 ${yen(x.amt)} ／ 先月 ${yen(pv.amt)}（${dayN}日目時点）</div></div></div>`);break}}
+  return out;
+}
+
 /* ---------- Insights ---------- */
 function insightsView(){
   const I=S.ins;const r=rangeOf(I.unit,I.offset);const pv=prevSameElapsed(I.unit,I.offset);
-  const head=`<div class="topbar"><span class="logo">monee.</span></div><h1 class="h" style="margin-bottom:16px">分析</h1>
+  const head=`<div class="topbar"><span class="logo">monee.</span></div><h1 class="h" style="margin-bottom:16px">ふりかえり</h1>
   <div class="seg" role="group" aria-label="期間の単位" style="margin-bottom:12px">${[['week','週'],['month','月'],['year','年']].map(([k,l])=>`<button aria-pressed="${I.unit===k}" data-act="iunit" data-v="${k}">${l}</button>`).join('')}</div>
   <div class="between" style="margin-bottom:16px"><button class="iconbtn" data-act="ioff" data-v="-1" aria-label="前の期間">${ic('left')}</button><b class="num">${esc(r.label)}</b><button class="iconbtn" data-act="ioff" data-v="1" aria-label="次の期間" ${I.offset>=0?'disabled style="opacity:.3"':''}>${ic('right')}</button></div>`;
   if(!ready()&&!S.txns.length)return head+skeleton();
   const cur=totals(r.from,r.to),prev=totals(pv.from,pv.to);
-  if(!S.txns.length)return head+`<div class="card">${emptyState('chart','分析できるデータがまだありません','いくつか記録すると、推移や内訳がここに表示されます。',`<a class="btn primary" href="#add">${ic('plus','sm')}記録する</a>`)}</div>`;
+  if(!S.txns.length)return head+`<div class="card">${emptyState('chart','ふりかえる記録がまだありません','いくつか記録すると、推移や内訳がここに表示されます。',`<a class="btn primary" href="#add">${ic('plus','sm')}記録する</a>`)}</div>`;
   const diff=cur.exp-prev.exp;const pct=prev.exp?Math.round(diff/prev.exp*100):null;
   const unitL={week:'先週',month:'先月',year:'昨年'}[I.unit]+(pv.partial?'の同時点':'');
   // trend
@@ -115,12 +134,14 @@ function insightsView(){
   const cbs=I.unit==='month'?catBudgets(r.from,r.to):[];
   const catBudBlock=I.unit!=='month'?'':`<section class="section"><div class="sec-h"><h2 class="s">カテゴリ別の予算</h2><button class="link" data-act="s-catbud">${cbs.length?'編集':'設定'}${ic('right','sm')}</button></div><div class="card">${cbs.length?`<div class="stack">${cbs.map(x=>`<div><div class="between"><span class="row" style="gap:8px;min-width:0"><span class="dot" style="background:${esc(x.c.color)}"></span><b class="ell">${esc(x.c.name)}</b></span><span class="num sub" style="flex:none">${yen(x.used)} / ${yen(x.bud)}</span></div><div class="prog" style="margin:6px 0 4px" role="progressbar" aria-label="${esc(x.c.name)}の予算使用率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(clamp(x.pct,0,100))}"><i style="width:${clamp(x.pct,0,100)}%;${x.pct>100?'background:var(--danger)':x.pct>=st.alertAt?'background:var(--warning)':''}"></i></div><div class="sub num" style="${x.used>x.bud?'color:var(--danger)':''}">${x.used>x.bud?`${yen(x.used-x.bud)} オーバー`:`残り ${yen(x.bud-x.used)}`}</div></div>`).join('')}</div>`:`<p class="sub" style="margin:0 0 12px">外食やカフェなど、使いすぎやすいカテゴリだけ上限を決めておくと、超えそうなときにホームでお知らせします。</p><button class="btn soft sm" data-act="s-catbud">${ic('plus','sm')}予算を決める</button>`}</div></section>`;
   const goals=st.goals.length?`<section class="section"><div class="sec-h"><h2 class="s">貯金の目標</h2><a class="link" href="#settings">編集${ic('right','sm')}</a></div><div class="card stack">${st.goals.map(g=>{const p=toInt(g.target)?toInt(g.saved)/toInt(g.target)*100:0;return `<div><div class="between"><b class="ell">${esc(g.name)}</b><span class="num sub">${yen(g.saved)} / ${yen(g.target)}</span></div><div class="prog" style="margin-top:6px" role="progressbar" aria-label="${esc(g.name)}の達成率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(clamp(p,0,100))}"><i style="width:${clamp(p,0,100)}%"></i></div></div>`}).join('')}</div></section>`:'';
-  return head+`<div class="grid2 enter"><div class="sum out"><div class="label">支出</div><div class="v num">${yen(cur.exp)}</div><span class="sub" style="display:inline-flex;gap:2px;align-items:center">${prev.exp?`${ic(diff>0?'up':'down','sm')}${unitL}比 ${syen(diff,diff>0?1:diff<0?-1:0)}${pct!=null?`（${pct>0?'+':''}${pct}%）`:''}`:`${unitL}の記録なし`}</span></div><div class="sum in"><div class="label">収入</div><div class="v num">${yen(cur.inc)}</div><span class="sub">収支 <span class="num">${syen(cur.inc-cur.exp,cur.inc-cur.exp>0?1:cur.inc-cur.exp<0?-1:0)}</span></span></div></div>
+  const ns=I.offset===0&&I.unit!=='year'?notices():[];
+  return head+(ns.length?`<section style="margin-bottom:20px"><h2 class="sr-only">お知らせ</h2><div class="stack" style="gap:10px">${ns.join('')}</div></section>`:'')+`<div class="grid2 enter"><div class="sum out"><div class="label">支出</div><div class="v num">${yen(cur.exp)}</div><span class="sub" style="display:inline-flex;gap:2px;align-items:center">${prev.exp?`${ic(diff>0?'up':'down','sm')}${unitL}比 ${syen(diff,diff>0?1:diff<0?-1:0)}${pct!=null?`（${pct>0?'+':''}${pct}%）`:''}`:`${unitL}の記録なし`}</span></div><div class="sum in"><div class="label">収入</div><div class="v num">${yen(cur.inc)}</div><span class="sub">収支 <span class="num">${syen(cur.inc-cur.exp,cur.inc-cur.exp>0?1:cur.inc-cur.exp<0?-1:0)}</span></span></div></div>
   ${I.unit==='week'?weeklyReview(I):I.unit==='month'?monthlyReview(r,pv,cur,prev):''}
   <div class="cols"><div>
   ${I.unit==='month'?calendarSection(r):`<section class="section"><div class="sec-h"><h2 class="s">支出の推移</h2><span class="sub num" aria-live="polite">${sel?`${esc(sel.full)}：${yen(sel.v)}`:'棒をタップで金額表示'}</span></div><div class="card">${svg}<table class="sr-only"><caption>支出の推移</caption>${buckets.map(b=>`<tr><th>${b.full}</th><td>${yen(b.v)}</td></tr>`).join('')}</table></div></section>`}
   <section class="section"><div class="sec-h"><h2 class="s">カテゴリ別</h2></div><div class="card">${breakdown(cur.byCat,cur.exp,false)}</div></section>
   ${budgetBlock}${catBudBlock}</div><div>
+  ${I.offset===0?`<section class="section"><div class="sec-h"><h2 class="s">がまん貯金</h2></div>${gamanCard()}</section>`:''}
   ${feelSection(r)}
   <section class="section"><div class="sec-h"><h2 class="s">AIの気づき</h2></div><div class="card">${S.ins.ai?`<div style="white-space:pre-wrap;font-size:15px">${esc(S.ins.ai)}</div><p class="sub" style="margin:10px 0 0;display:flex;gap:6px">${ic('info','sm')}アプリで集計した数値だけをもとにしています。</p>`:`<p class="sub" style="margin:0 0 12px">この期間の集計結果（合計・カテゴリ別・前期間比）だけをAIに渡して、気づきをまとめます。個々の記録は送りません。</p>`}${S.sample?`<button class="btn ${S.ins.ai?'ghost':'soft'} sm" data-act="iai" ${S.ins.aiBusy||!cur.exp?'disabled':''}>${S.ins.aiBusy?ic('loader','sm spin')+'分析中…':ic('sparkles','sm')+(S.ins.ai?'もう一度分析':'分析してもらう')}</button>`:'<p class="sub">この表示ではAI分析を使えません。</p>'}</div></section>
   <section class="section"><div class="sec-h"><h2 class="s">よく買っているもの</h2></div><div class="card" style="padding:8px 16px">${topItems.length?topItems.map(x=>`<div class="between" style="padding:10px 0;border-bottom:1px solid var(--border)"><span class="ell">${esc(x.name)}</span><span class="sub num" style="flex:none">${x.n}点 · <b style="color:var(--text-primary)">${yen(x.amt)}</b></span></div>`).join(''):emptyState('receipt','品目のデータがありません','レシートを読み取ると、品目ごとの支出がわかります。')}</div></section>

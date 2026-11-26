@@ -58,7 +58,7 @@ const emptyState=(icon,t,d,action='')=>`<div class="empty">${`<div class="ic">${
 const catIcon=c=>`<span class="cat-ic" style="background:${esc(c.color)}" aria-hidden="true">${esc((c.name||'?').slice(0,1))}</span>`;
 
 /* ================= Nav ================= */
-const NAV=[['home','ホーム','home'],['history','履歴','receipt'],['add','追加','plus'],['insights','分析','chart'],['settings','設定','settings']];
+const NAV=[['home','ホーム','home'],['history','履歴','receipt'],['add','追加','plus'],['insights','ふりかえり','chart'],['settings','設定','settings']];
 function navHTML(){
   const top=S.route.split('-')[0];
   $('#bnav').innerHTML=NAV.map(([r,l,i])=>r==='add'?`<a href="#add" class="add" ${top==='add'?'aria-current="page"':''} aria-label="追加"><span class="fab">${ic('plus')}</span><span>${l}</span></a>`:`<a href="#${r}" ${top===r?'aria-current="page"':''}>${ic(i)}<span>${l}</span></a>`).join('');
