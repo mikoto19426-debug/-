@@ -8,6 +8,11 @@
 <meta name="theme-color" content="#0E1015" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="会計">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -177,6 +182,16 @@
 
   <!-- 設定 -->
   <section id="tab-settings" class="tab">
+    <h2>アプリとして使う</h2>
+    <div class="card">
+      <p class="muted">ホーム画面に追加すると、アプリのように開けます。一度開いておけば、ネットがなくても起動できます。</p>
+      <p id="appStatus" class="app-status"></p>
+      <button type="button" id="installBtn" class="primary" hidden>アプリとして入れる</button>
+      <ul class="muted small howto">
+        <li>iPhone：Safariで開き、共有ボタン →「ホーム画面に追加」</li>
+        <li>Android：Chromeのメニュー →「アプリをインストール」または「ホーム画面に追加」</li>
+      </ul>
+    </div>
     <h2>口座</h2>
     <div class="card">
       <div id="accountList"></div>

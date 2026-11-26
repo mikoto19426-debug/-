@@ -1366,6 +1366,40 @@ $('#clientIdForm').addEventListener('submit', async (e) => {
   render();
 });
 
+// ---------- アプリとして使う ----------
+let installEvent = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+async function renderAppStatus() {
+  const el = $('#appStatus');
+  if (!el) return;
+  let ready = false;
+  try {
+    ready = !!(await navigator.serviceWorker?.getRegistration())?.active;
+  } catch { /* 使えない環境 */ }
+  el.classList.toggle('ready', ready);
+  el.textContent = ready
+    ? (isStandalone() ? 'アプリとして開いています。ネットなしでも起動できます。' : 'この端末はネットなしでも起動できます。')
+    : 'ネットなしで起動する準備ができていません（Webサイトとして公開したURLから開くと準備されます）。';
+  $('#installBtn').hidden = !installEvent || isStandalone();
+}
+addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installEvent = e;
+  renderAppStatus();
+});
+addEventListener('appinstalled', () => {
+  installEvent = null;
+  toast('アプリとして入れました');
+  renderAppStatus();
+});
+$('#installBtn').addEventListener('click', async () => {
+  if (!installEvent) return;
+  installEvent.prompt();
+  await installEvent.userChoice.catch(() => {});
+  installEvent = null;
+  renderAppStatus();
+});
+
 // ---------- オンライン表示 ----------
 function updateNet() {
   const el = $('#netStatus');
@@ -1409,10 +1443,14 @@ async function reload() {
   await reload();
   // ブラウザに自動削除されないよう永続保存を要求
   if (navigator.storage?.persist) navigator.storage.persist().then(() => renderStorageInfo());
-  // オフライン用キャッシュ（http/https で開いたときのみ有効）
+  // アプリ本体を端末に保存して、ネットなしでも開けるようにする（http/https で開いたときのみ）
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js')
+      .then(() => navigator.serviceWorker.ready)
+      .then(renderAppStatus)
+      .catch(renderAppStatus);
   }
+  renderAppStatus();
   // 同期の準備（ログイン済みなら起動時に同期）
   if (local.clientId && navigator.onLine) {
     loadGis().catch(() => {});

@@ -343,3 +343,10 @@ dialog#ask::backdrop { background: var(--scrim); }
 .ask-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ask-actions button { min-height: 48px; }
 button.danger-fill { background: var(--exp); color: #FFFFFF; }
+
+/* アプリとして使う */
+.app-status { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: .9rem; margin: 4px 0 12px; }
+.app-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--nezumi); flex: none; }
+.app-status.ready::before { background: var(--inc); }
+.howto { padding-left: 1.2em; margin: 12px 0 0; }
+.howto li { margin-bottom: 4px; }

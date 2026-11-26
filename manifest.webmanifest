@@ -1,13 +1,19 @@
 {
+  "id": "./",
   "name": "オフライン会計",
   "short_name": "会計",
+  "description": "学園祭の屋台用のレジと会計。ネットがなくても使えます。",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
+  "orientation": "portrait",
   "background_color": "#F4F5F7",
   "theme_color": "#F4F5F7",
   "lang": "ja",
   "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }
