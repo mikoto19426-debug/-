@@ -8,6 +8,8 @@ document.addEventListener('click',async e=>{
   if(a==='detail'){detailSheet(id);return}
   if(a==='quick'){quickSheet({});return}
   if(a==='dot'){S.dotI++;S.dotHopAt=Date.now();render();return}
+  if(a==='dotinfo'){dotInfoSheet();return}
+  if(a==='copyremind'){try{await navigator.clipboard.writeText(el.dataset.v);toast('コピーしました')}catch(err){toast('コピーできませんでした。文を長押ししてコピーしてください',{err:true})}return}
   if(a==='gaman'){gamanSheet();return}
   if(a==='gmove'){gamanMoveSheet();return}
   if(a==='gmoveok'){confirmMove(el);return}
@@ -59,6 +61,10 @@ document.addEventListener('click',async e=>{
   if(a==='sugg'){sendChat(el.dataset.v);return}
   if(a==='psave'||a==='pedit'||a==='pdrop'){const p=S.chat.proposals[el.dataset.pid];if(!p||p.state!=='open')return;
     if(a==='pdrop'){p.state='discarded';render();return}
+    if(p.kind==='zero'||p.kind==='gaman'){busy(el,true);try{
+      if(p.kind==='zero')await setZeroDay(p.data.date,true);
+      else{const now=new Date().toISOString();await S.db.collection('skips').doc(uid()).set({name:p.data.name,amount:p.data.amount,date:today(),status:'pending',movedAt:null,goalId:null,createdAt:now})}
+      p.state='saved';S.dotHopAt=Date.now();render();toast(p.kind==='zero'?'0円の日を記録しました':'がまんを記録しました')}catch(err){busy(el,false);toast(writeErr(err),{err:true})}return}
     if(a==='pedit'){S.form=blankForm({...p.data,amount:String(p.data.amount),source:'chat',chatProposal:el.dataset.pid});location.hash='#add-manual';return}
     busy(el,true);const now=new Date().toISOString();const d=p.data;const obj={...d,status:'confirmed',source:'chat',discount:0,tax:0,taxIncluded:true,receiptAssetId:null,refunded:0,refunds:[],createdAt:now,updatedAt:now};const nid=uid();
     try{await saveTxn(nid,obj);p.state='saved';render();toast('保存しました',{undo:async()=>{await S.db.collection('txns').doc(nid).delete();p.state='open';render()}})}catch(err){busy(el,false);toast(writeErr(err),{err:true})}return}

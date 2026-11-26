@@ -20,6 +20,7 @@ function quickCard(){
   const fv=favorites();const t0=today();const td=S.txns.filter(t=>t.date===t0&&netExpense(t));const sum=td.reduce((a,t)=>a+netExpense(t),0);
   return `<section class="card sm quick enter" aria-labelledby="qh"><div class="between"><h2 class="s" id="qh" style="font-size:16px">記録する</h2><a class="link" href="#history">今日 <span class="num">${yen(sum)}</span>・${td.length}件${ic('right','sm')}</a></div>
   <div class="grid2"><button class="btn primary" data-act="quick">${ic('plus','sm')}金額を入れる</button><button class="btn ghost" data-act="gaman">${ic('piggy','sm')}がまんした</button></div>
+  <a class="link" href="#add-chat" style="align-self:flex-start;min-height:32px;padding:0">${ic('chat','sm')}ドットに話して記録する</a>
   ${fv.length?`<div><div class="label" style="margin-bottom:6px">いつもの（タップで今日の記録に追加）</div><div class="favs">${fv.map(favBtn).join('')}</div></div>`:''}</section>`;
 }
 function todayQuestion(){ // 問いかけは1つだけ。①昨日の記録 ②夕方以降の今日の記録 ③数日前の「買ってよかった？」

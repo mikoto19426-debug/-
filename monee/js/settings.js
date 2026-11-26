@@ -17,6 +17,7 @@ function settingsView(){
    ${row('repeat','定期の支払い',st.recurring.length?`${st.recurring.length}件`:'未登録','s-recur')}
    ${row('target','貯金の目標',st.goals.length?`${st.goals.length}件`:'未登録','s-goals')}</div></section></div><div>
   <section class="section"><div class="sec-h"><h2 class="s">表示とデータ</h2></div><div class="card" style="padding:4px 16px">
+   ${row('clock','夜のリマインド','Claudeの予定タスクで設定','s-remind')}
    ${row('bell','お知らせ',`予算の${st.alertAt}%到達・定期支払いの記録忘れ`,'budget')}
    ${row('tag','週の評価から除くメモ',st.excludeWords.length?esc(st.excludeWords.join('・')):'なし','s-exclude')}
    ${row('calendar','通貨と日付','日本円（¥）· 週の始まり：'+(st.weekStart===0?'日曜':'月曜'),'s-date')}
@@ -51,6 +52,8 @@ function settingsSheet(kind){
       $('#ss-list').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{S._g.splice(+b.dataset.rm,1);draw()});$('#ss-list').querySelectorAll('[data-k]').forEach(b=>b.oninput=()=>{const g=S._g[+b.dataset.i];g[b.dataset.k]=b.dataset.k==='name'?b.value:toInt(b.value)})};
     openSheet(`${sheetHead('貯金の目標')}<div id="ss-list"></div><button class="btn soft block" id="ss-add" style="margin:8px 0 14px">${ic('plus','sm')}目標を追加</button>${saveBtn}`,{label:'貯金の目標'});draw();
     $('#ss-add').onclick=()=>{S._g.push({id:uid(),name:'新しい目標',target:100000,saved:0});draw()};wire(()=>({goals:S._g.filter(g=>String(g.name).trim())}))}
+  if(kind==='s-remind'){const phrase='毎晩21時に「今日の出費、monee.に記録した？」とリマインドして';
+    openSheet(`${sheetHead('夜のリマインド')}<div class="stack"><p style="margin:0">このページは、閉じているあいだに通知を送ることができません。毎晩の通知が欲しいときは、Claudeのチャットで次のように頼むと、予定タスクとして設定できます。</p><div class="card sm" style="font-weight:600">${esc(phrase)}</div><button class="btn primary block" data-act="copyremind" data-v="${esc(phrase)}">${ic('copy','sm')}この文をコピー</button><p class="sub" style="margin:0">ページを開いたときは、ドットと「今日の問いかけ」が記録し忘れを教えてくれます。</p></div>`,{narrow:true,label:'夜のリマインド'})}
   if(kind==='s-exclude'){openSheet(`${sheetHead('週の評価から除くメモ')}<div class="stack"><p class="sub" style="margin:0">メモにこの言葉が入った支出は、週の評価で「除いて計算する」を選べるようになります（家族のお金で払ったものなど）。読点「、」で区切って複数入れられます。</p><label class="field"><span>言葉</span><input id="ss-ex" class="input" maxlength="80" value="${esc(st.excludeWords.join('、'))}"></label>${saveBtn}</div>`,{narrow:true,label:'週の評価から除くメモ'});
     wire(()=>({excludeWords:$('#ss-ex').value.split(/[、,，]/).map(x=>x.trim()).filter(Boolean)}))}
   if(kind==='s-date'){openSheet(`${sheetHead('通貨と日付')}<div class="stack"><dl class="kv"><dt>通貨</dt><dd>日本円（¥・小数なし）</dd><dt>日付の表示</dt><dd>11月4日（水）形式</dd></dl><label class="field"><span>週の始まり</span><select id="ss-w" class="input"><option value="1" ${st.weekStart!==0?'selected':''}>月曜日</option><option value="0" ${st.weekStart===0?'selected':''}>日曜日</option></select></label>${saveBtn}</div>`,{narrow:true});wire(()=>({weekStart:Number($('#ss-w').value)}))}

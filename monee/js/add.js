@@ -8,7 +8,7 @@ function addView(){
    <button class="entry primary" data-act="quick"><span class="ic">${ic('plus','lg')}</span><span style="flex:1"><span class="t" style="display:block">すばやく記録</span><span class="sub">金額とカテゴリだけ。いちばん早い方法です</span></span>${ic('right')}</button>
    ${(()=>{const fv=favorites();return fv.length?`<div><div class="label" style="margin-bottom:6px">いつもの（タップで今日の記録に追加）</div><div class="favs">${fv.map(favBtn).join('')}</div></div>`:''})()}
    <a href="#add-scan" class="entry" style="text-decoration:none;color:inherit"><span class="ic">${ic('camera','lg')}</span><span style="flex:1"><span class="t" style="display:block">レシートを読み取る</span><span class="sub">撮るだけで店名・品目・金額を読み取ります</span></span>${ic('right')}</a>
-   <a href="#add-chat" class="entry" style="text-decoration:none;color:inherit"><span class="ic">${ic('chat','lg')}</span><span style="flex:1"><span class="t" style="display:block">AIチャットで記録</span><span class="sub">「カフェで680円」と送るだけ。集計の質問もOK</span></span>${ic('right')}</a>
+   <a href="#add-chat" class="entry" style="text-decoration:none;color:inherit"><span class="ic">${ic('chat','lg')}</span><span style="flex:1"><span class="t" style="display:block">ドットに話して記録</span><span class="sub">「カフェで680円」と送るだけ。集計の質問もOK</span></span>${ic('right')}</a>
    <button class="entry" data-act="newform"><span class="ic">${ic('pencil','lg')}</span><span style="flex:1"><span class="t" style="display:block">手入力</span><span class="sub">支出・収入・振替・返金を細かく入力</span></span>${ic('right')}</button>
   </div>
   <section class="section"><div class="sec-h"><h2 class="s">確認待ちの候補</h2>${pend.length?`<span class="pill">${pend.length}件</span>`:''}</div>${inboxSection(pend)}</section>

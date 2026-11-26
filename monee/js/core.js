@@ -85,7 +85,7 @@ const DEFAULTS={
 };
 const TYPE_L={expense:'支出',income:'収入',transfer:'振替',refund:'返金'};
 const STATUS_L={draft:'下書き',cancelled:'取消',refunded:'返金済み',partial:'一部返金'};
-const SRC_L={manual:'手入力',chat:'AIチャット',receipt:'レシート',claude:'Claude',gmail:'メール',recurring:'定期',quick:'クイック記録'};
+const SRC_L={manual:'手入力',chat:'ドットと話す',receipt:'レシート',claude:'Claude',gmail:'メール',recurring:'定期',quick:'クイック記録'};
 
 /* ================= State ================= */
 const S={
