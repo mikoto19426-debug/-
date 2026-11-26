@@ -28,3 +28,4 @@ Newest at the bottom. Each line: date, what happened, what to do next time.
 - Cycles CPU, 1280x720, 16 spp + OIDN ≈ 50 s/frame here; 240 frames ≈ 3.3 h. Background jobs stop at 2 h, so render in ranges (`START END`) and resume from the first missing frame; name outputs by frame number.
 - Painterly post (structure-tensor strokes, fixed seed) + bloom over plain renders reads as "Van Gogh-like" and hides the CG look; fixed seed keeps flicker low.
 - 240 WebP frames ≈ 15 MB; publish with `files` + `root` (≤255 files per publish).
+- 2026-11-26 user: heavy oil strokes (r=14,7,3) looked 'too oily / too rough'. Use light strokes (r=6,3) blended ~45% over the sharp render + slight sharpen, WebP q90 (scripts/paint_frames.py).
