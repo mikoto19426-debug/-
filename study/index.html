@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>べんきょう</title>
+<meta name="theme-color" content="#F6F6F4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="べんきょう">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div>
+    <div id="hdrDate" class="hdr-date"></div>
+    <div id="hdrFocus" class="hdr-focus"></div>
+  </div>
+  <button id="btnSettings" class="icon-btn" aria-label="設定">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Zm7.4-2.5a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1c.5.4 1.1.8 1.7 1l.4 2.5h4l.4-2.5c.6-.2 1.2-.6 1.7-1l2.4 1 2-3.4-2-1.6Z"/></svg>
+  </button>
+</header>
+
+<main>
+  <section id="view-home" class="view active"></section>
+  <section id="view-lists" class="view"></section>
+  <section id="view-plan" class="view"></section>
+  <section id="view-stats" class="view"></section>
+  <section id="view-settings" class="view"></section>
+</main>
+
+<nav id="tabs" class="tabs">
+  <button data-view="home" class="active"><span class="ti">●</span>今日</button>
+  <button data-view="lists"><span class="ti">☰</span>リスト</button>
+  <button data-view="plan"><span class="ti">▦</span>予定</button>
+  <button data-view="stats"><span class="ti">▮</span>記録</button>
+</nav>
+
+<!-- タイマー（全画面） -->
+<div id="timer" class="timer" hidden></div>
+
+<!-- 下から出るシート -->
+<div id="sheetWrap" class="sheet-wrap" hidden>
+  <div class="scrim" data-close></div>
+  <div id="sheet" class="sheet" role="dialog" aria-modal="true"></div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
