@@ -29,3 +29,5 @@ Newest at the bottom. Each line: date, what happened, what to do next time.
 - Painterly post (structure-tensor strokes, fixed seed) + bloom over plain renders reads as "Van Gogh-like" and hides the CG look; fixed seed keeps flicker low.
 - 240 WebP frames ≈ 15 MB; publish with `files` + `root` (≤255 files per publish).
 - 2026-11-26 user: heavy oil strokes (r=14,7,3) looked 'too oily / too rough'. Use light strokes (r=6,3) blended ~45% over the sharp render + slight sharpen, WebP q90 (scripts/paint_frames.py).
+- 2026-11-26 user asked "これだけ？". Cheap upgrades that need no re-render: browser-made sound (WebAudio wind/crickets/murmur/clinks + footsteps per stride, start behind a "音ありではじめる" button), speechSynthesis voices (ja-JP lines, fr-FR "Bonjour"), look-around by tilt/mouse (draw frames 8% oversized and pan), breathing lights (blurred bright-only copy added with 'lighter' + flicker), tap-to-talk using per-frame head positions projected from the Blender camera (scripts/project_people.py -> people.json).
+- Wikimedia API rate-limits fast (429); fetch a few known files only, and don't loop searches.

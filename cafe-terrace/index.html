@@ -60,6 +60,21 @@ body {
   font-family: var(--font-jp); color: var(--muted); background: var(--night); transition: opacity .8s ease; }
 #loading .bar { width: min(60vw, 280px); height: 3px; background: rgba(251, 240, 207, .2); border-radius: 2px; overflow: hidden; }
 #loading .bar i { display: block; height: 100%; width: 0; background: var(--gas); }
+#loading .start { display: none; gap: 12px; flex-wrap: wrap; justify-content: center; }
+#loading.ready .start { display: flex; } #loading.ready .bar, #loading.ready span { display: none; }
+#loading button, #snd { font-family: var(--font-jp); font-weight: 600; color: var(--ink); background: var(--gas); border: 0; border-radius: 999px; padding: .7em 1.6em; font-size: 16px; cursor: pointer; box-shadow: 0 0 24px rgba(243, 201, 92, .45); }
+#loading button.ghost { background: transparent; color: var(--cream); box-shadow: inset 0 0 0 1px var(--muted); }
+#loading .lead { font-family: var(--font-title); font-size: clamp(28px, 4vw, 44px); color: var(--cream); margin-bottom: 6px; }
+#loading.ready .lead { display: block; } #loading .lead { display: none; }
+#snd { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(14px + env(safe-area-inset-right, 0px)); padding: .35em 1em; font-size: 13px; background: rgba(7, 13, 36, .55); color: var(--cream); box-shadow: inset 0 0 0 1px var(--muted); display: none; }
+#snd.show { display: block; }
+#bubble { position: fixed; left: 0; top: 0; transform: translate(-50%, calc(-100% - 18px)); max-width: min(60vw, 20em); width: max-content; padding: .55em 1.1em; border-radius: 1.2em;
+  background: var(--cream); color: var(--ink); font-family: var(--font-jp); font-weight: 600; font-size: clamp(14px, 1.8vw, 20px); line-height: 1.5; text-align: center;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .45); opacity: 0; transition: opacity .35s ease; pointer-events: none; }
+#bubble::after { content: ""; position: absolute; left: 50%; bottom: -9px; margin-left: -9px; border: 9px solid transparent; border-bottom: 0; border-top-color: var(--cream); }
+#bubble.on { opacity: 1; }
+#tap { position: fixed; left: 50%; top: calc(14px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); font-family: var(--font-jp); font-size: 14px; color: var(--cream);
+  background: rgba(7, 13, 36, .55); padding: .4em 1.1em; border-radius: 999px; opacity: 0; transition: opacity .6s ease; pointer-events: none; white-space: nowrap; }
 #loading.gone { opacity: 0; pointer-events: none; }
 </style>
 
@@ -71,7 +86,10 @@ body {
 <div id="finale" aria-hidden="true"></div>
 <div id="hint">スクロールしてね</div>
 <div id="rail" aria-hidden="true"><i></i></div>
-<div id="loading"><span>読み込み中…</span><div class="bar"><i></i></div></div>
+<div id="loading"><div class="lead">Café Terrace at Night</div><span>読み込み中…</span><div class="bar"><i></i></div><div class="start"><button id="go-snd">音ありではじめる</button><button id="go-mute" class="ghost">音なしで</button></div></div>
+<div id="bubble" aria-live="polite"></div>
+<div id="tap">人をタップすると、話しかけられるよ</div>
+<button id="snd" aria-label="音のオンオフ">音：ON</button>
 
 <script>
 (() => {
@@ -120,29 +138,189 @@ addEventListener('resize', resize);
 
 function nearest(i) { for (let r = 0; r < CONFIG.frames; r++) { if (imgs[i - r]) return imgs[i - r]; if (imgs[i + r]) return imgs[i + r]; } return null; }
 const museumEl = document.getElementById('museum'), frameEl = document.querySelector('#museum .frame');
-function draw(p) {
-  // museum: walk up to the painting until it fills the screen, then it melts into the walk
+
+/* ---------- looking around: tilt the tablet (or move the mouse); otherwise a slow natural sway ---------- */
+const OVER = 1.08;                       // draw frames 8% larger so there is room to look around
+let lookX = 0, lookY = 0, aimX = 0, aimY = 0, gyro = false, base = null;
+addEventListener('deviceorientation', e => {
+  if (e.gamma == null) return; gyro = true;
+  const landscape = Math.abs(window.orientation || (screen.orientation && screen.orientation.angle) || 0) === 90;
+  const a = landscape ? e.beta : e.gamma, b = landscape ? e.gamma : e.beta;
+  if (!base) base = [a, b];
+  const sign = ((screen.orientation && screen.orientation.angle) === 270 || window.orientation === -90) ? -1 : 1;
+  aimX = clamp((a - base[0]) * sign / 18, -1, 1); aimY = clamp(-(b - base[1]) / 22, -1, 1);
+});
+addEventListener('pointermove', e => { if (e.pointerType === 'mouse') { aimX = (e.clientX / W - .5) * 2; aimY = (e.clientY / H - .5) * 2; } });
+
+/* ---------- lights that breathe: a blurred copy of only the bright parts, added on top with a flicker ---------- */
+const glow = document.createElement('canvas'), gctx = glow.getContext('2d'); glow.width = 320; glow.height = 180;
+let glowOf = null;
+function makeGlow(im) {
+  glowOf = im; gctx.clearRect(0, 0, 320, 180);
+  gctx.filter = 'brightness(.55) contrast(3.2) saturate(1.4) blur(5px)'; gctx.drawImage(im, 0, 0, 320, 180); gctx.filter = 'none';
+}
+const flicker = t => .55 + .25 * Math.sin(t * 1.7) * Math.sin(t * .63 + 1) + .12 * Math.sin(t * 7.3) * Math.sin(t * 3.1);
+
+let rect = null, curFrame = -1;
+function draw(p, now) {
   const k = clamp(p / CONFIG.start), e = k * k * (3 - 2 * k);
   const full = Math.max(innerWidth / frameEl.offsetWidth, innerHeight / frameEl.offsetHeight) * 1.05;
   frameEl.style.transform = `scale(${(1 + (full - 1) * e).toFixed(4)})`;
   museumEl.style.opacity = (1 - clamp((p - CONFIG.start * .85) / (CONFIG.start * .3))).toFixed(3);
   museumEl.style.visibility = p > CONFIG.start * 1.2 ? 'hidden' : 'visible';
   const q = clamp((p - CONFIG.start) / (1 - CONFIG.start));
-  const im = nearest(Math.round(q * (CONFIG.frames - 1))); if (!im) return;
-  const s = Math.max(W / im.width, H / im.height), w = im.width * s, h = im.height * s;
-  ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+  curFrame = Math.round(q * (CONFIG.frames - 1));
+  const im = nearest(curFrame); if (!im) return q;
+  const t = now / 1000;
+  const tx = gyro || Math.abs(aimX) > .001 ? aimX : Math.sin(t * .23) * .35, ty = gyro ? aimY : Math.sin(t * .17 + 1) * .25;
+  lookX += (tx - lookX) * .06; lookY += (ty - lookY) * .06;
+  const s = Math.max(W / im.width, H / im.height) * OVER, w = im.width * s, h = im.height * s;
+  const x = (W - w) / 2 - lookX * (w - W) / 2, y = (H - h) / 2 - lookY * (h - H) / 2;
+  ctx.drawImage(im, x, y, w, h); rect = { x, y, w, h };
+  if (glowOf !== im) makeGlow(im);
+  ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = .22 * flicker(t);
+  ctx.drawImage(glow, x, y, w, h);
+  ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+  return q;
 }
 
-let target = 0, sp = 0, last = performance.now(), capIdx = -2;
+/* ---------- people you can talk to ---------- */
+let PEOPLE = {}; fetch('people.json').then(r => r.json()).then(j => PEOPLE = j).catch(() => {});
+const LINES = {
+  vincent: { v: 'man', pitch: .8, lines: ['この黄色を、どう塗ろうか考えているんだ。', '夜は、昼よりもずっと色にあふれているね。', '星を見ると、いつも夢を見たくなる。'] },
+  g0: { v: 'man', pitch: .9, lines: ['今夜は星がよく見えるね。', 'このカフェ、夜おそくまでやってるんだ。'] },
+  g1: { v: 'woman', pitch: 1.3, lines: ['ランプの光、まるで小さな太陽みたい。', 'こんばんは。いい夜ね。'] },
+  g2: { v: 'woman', pitch: 1.25, lines: ['あなた、見ない顔ね。旅の人？', 'ここのコーヒー、おいしいのよ。'] },
+  g3: { v: 'man', pitch: 1.0, lines: ['コーヒーをもう一杯たのもうかな。', '石だたみ、すべるから気をつけて。'] },
+  g4: { v: 'woman', pitch: 1.35, lines: ['あの麦わら帽子の人、毎晩ここで絵を描いてるの。', '変わった人だけど、やさしいのよ。'] },
+  g5: { v: 'man', pitch: .85, lines: ['やあ、フィンセントに会いに来たのかい？', 'あいつの絵、いつか売れるといいがなあ。'] },
+  waiter: { v: 'man', pitch: 1.05, lines: ['いらっしゃいませ！お好きな席へどうぞ。', 'ご注文は、あとでうかがいますね。'] },
+  w0: { v: 'man', pitch: .95, lines: ['ボンソワール！', 'いい散歩日和……いや、散歩夜和だね。'] },
+  w1: { v: 'woman', pitch: 1.3, lines: ['こんばんは。カフェはこの先よ。'] },
+  w2: { v: 'man', pitch: .9, lines: ['ちょっと失礼、通りますよ。'] }
+};
+const said = {}; const bubbleEl = document.getElementById('bubble'); let talk = null;
+function screenOf(name) {
+  const row = (PEOPLE[curFrame] || []).find(r => r[0] === name); if (!row || !rect) return null;
+  return { x: rect.x + row[1] * rect.w, y: rect.y + row[2] * rect.h, d: row[3] };
+}
+cv.addEventListener('click', e => {
+  if (!rect || sp < CONFIG.start * 1.2) return;
+  let best = null, bd = 1e9;
+  for (const [n, rx, ry, d] of PEOPLE[curFrame] || []) {
+    const x = rect.x + rx * rect.w, y = rect.y + ry * rect.h, r = Math.max(36, rect.h * .5 / d);
+    const dx = (e.clientX - x) / r, dy = (e.clientY - y) / r;
+    if (Math.abs(dx) < 1.1 && dy > -1.2 && dy < 3.2) { const sc = dx * dx + (dy - 1) * (dy - 1) * .3 + d * .02; if (sc < bd) { bd = sc; best = n; } }
+  }
+  if (!best || !LINES[best]) return;
+  const L = LINES[best], i = (said[best] = ((said[best] ?? -1) + 1)) % L.lines.length;
+  talk = { name: best, until: performance.now() + 3800 };
+  bubbleEl.textContent = L.lines[i]; bubbleEl.classList.add('on'); placeBubble();
+  speak(L.lines[i], 'ja-JP', L.pitch, L.v); tapSeen = true;
+});
+function placeBubble() {
+  if (!talk) return;
+  const pos = screenOf(talk.name);
+  if (!pos || performance.now() > talk.until) { bubbleEl.classList.remove('on'); talk = null; return; }
+  bubbleEl.style.left = clamp(pos.x, 120, W - 120) + 'px'; bubbleEl.style.top = Math.max(70, pos.y - Math.min(60, H * .25 / pos.d)) + 'px';
+}
+
+/* ---------- sound: everything is made live in the browser (wind, crickets, café murmur, glasses, footsteps) ---------- */
+let AC = null, master = null, soundOn = false, bus = {};
+const sndBtn = document.getElementById('snd');
+function noiseBuf(sec, brown) {
+  const b = AC.createBuffer(1, AC.sampleRate * sec, AC.sampleRate), d = b.getChannelData(0); let l = 0;
+  for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; if (brown) { l = (l + .02 * w) / 1.02; d[i] = l * 3.5; } else d[i] = w; }
+  return b;
+}
+function loopNoise(brown) { const s = AC.createBufferSource(); s.buffer = noiseBuf(4, brown); s.loop = true; s.start(); return s; }
+function startSound() {
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  master = AC.createGain(); master.gain.value = .9; master.connect(AC.destination);
+  // wind: brown noise through a slowly wandering low-pass
+  const wind = loopNoise(true), wf = AC.createBiquadFilter(); wf.type = 'lowpass'; wf.frequency.value = 420;
+  bus.wind = AC.createGain(); bus.wind.gain.value = 0; wind.connect(wf).connect(bus.wind).connect(master);
+  const lfo = AC.createOscillator(), lg = AC.createGain(); lfo.frequency.value = .09; lg.gain.value = 220; lfo.connect(lg).connect(wf.frequency); lfo.start();
+  // café murmur: band-passed noise in speech bands, each opening and closing like syllables
+  bus.cafe = AC.createGain(); bus.cafe.gain.value = 0; bus.cafe.connect(master);
+  const white = noiseBuf(4, false);
+  [380, 620, 900, 1400, 2300].forEach((f, i) => {
+    const src = AC.createBufferSource(); src.buffer = white; src.loop = true; src.start(0, i * .7);
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 3.5;
+    const g = AC.createGain(); g.gain.value = 0; src.connect(bp).connect(g).connect(bus.cafe);
+    const syl = () => { if (!AC) return; const t = AC.currentTime; g.gain.setTargetAtTime(Math.random() < .55 ? (.9 - i * .12) * Math.random() : 0, t, .04 + Math.random() * .06); setTimeout(syl, 90 + Math.random() * 180); };
+    syl();
+  });
+  bus.fx = AC.createGain(); bus.fx.gain.value = 0; bus.fx.connect(master);
+  bus.night = AC.createGain(); bus.night.gain.value = 0; bus.night.connect(master);
+  // crickets
+  const cricket = () => {
+    if (!AC) return; const t = AC.currentTime + .05, pan = AC.createStereoPanner(); pan.pan.value = Math.random() * 1.6 - .8; pan.connect(bus.night);
+    const o = AC.createOscillator(); o.frequency.value = 4300 + Math.random() * 500; const g = AC.createGain(); g.gain.value = 0; o.connect(g).connect(pan);
+    for (let n = 0; n < 3; n++) { const a = t + n * .07; g.gain.setValueAtTime(0, a); g.gain.linearRampToValueAtTime(.05, a + .012); g.gain.linearRampToValueAtTime(0, a + .045); }
+    o.start(t); o.stop(t + .3); setTimeout(cricket, 350 + Math.random() * 900);
+  };
+  cricket(); cricket();
+  // glasses and cups on the terrace
+  const clink = () => {
+    if (!AC) return; const t = AC.currentTime + .02, pan = AC.createStereoPanner(); pan.pan.value = Math.random() * 1.4 - .7; pan.connect(bus.fx);
+    [1, 2.76, 5.4].forEach((m, j) => { const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = (2100 + Math.random() * 900) * m; g.gain.setValueAtTime(.12 / (j + 1), t); g.gain.exponentialRampToValueAtTime(.0001, t + .5 / (j + 1)); o.connect(g).connect(pan); o.start(t); o.stop(t + .6); });
+    if (Math.random() < .4) setTimeout(clink, 120 + Math.random() * 120);
+    setTimeout(clink, 1800 + Math.random() * 4200);
+  };
+  clink();
+  soundOn = true; sndBtn.classList.add('show'); sndBtn.textContent = '音：ON';
+}
+function step() {   // one footstep on cobblestones
+  if (!AC || !soundOn) return; const t = AC.currentTime;
+  const s = AC.createBufferSource(); s.buffer = bus.stepBuf || (bus.stepBuf = noiseBuf(.2, false));
+  const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 700 + Math.random() * 400; bp.Q.value = 1.2;
+  const g = AC.createGain(); g.gain.setValueAtTime(.5, t); g.gain.exponentialRampToValueAtTime(.001, t + .13);
+  s.connect(bp).connect(g).connect(master); s.start(t); s.stop(t + .2);
+  const o = AC.createOscillator(), og = AC.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(50, t + .1);
+  og.gain.setValueAtTime(.35, t); og.gain.exponentialRampToValueAtTime(.001, t + .12); o.connect(og).connect(master); o.start(t); o.stop(t + .15);
+}
+const ramp = (g, v) => g && g.gain.setTargetAtTime(v, AC.currentTime, .3);
+function mixFor(p, q) {
+  if (!AC) return;
+  const inside = p > CONFIG.start * .7 ? 1 : 0, terrace = clamp((q - .15) / .25);
+  ramp(bus.wind, soundOn ? (p < CONFIG.start ? .25 * clamp((p - .04) / .05) : .32 - .2 * terrace) : 0);
+  ramp(bus.night, soundOn ? inside * (.9 - .6 * terrace) : 0);
+  ramp(bus.cafe, soundOn ? inside * (.05 + .3 * terrace) : 0);
+  ramp(bus.fx, soundOn ? inside * terrace * .8 : 0);
+}
+let voices = [];
+const loadVoices = () => voices = speechSynthesis ? speechSynthesis.getVoices() : [];
+if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+function speak(text, lang, pitch = 1, kind) {
+  if (!soundOn || !window.speechSynthesis) return;
+  const u = new SpeechSynthesisUtterance(text.replace(/[「」]/g, '')); u.lang = lang; u.pitch = pitch; u.rate = lang === 'ja-JP' ? 1.0 : .85; u.volume = 1;
+  const vs = voices.filter(v => v.lang && v.lang.replace('_', '-').startsWith(lang.slice(0, 2)));
+  if (vs.length) u.voice = vs.find(v => kind === 'man' ? /male|otoko|男/i.test(v.name) && !/female/i.test(v.name) : /female|女/i.test(v.name)) || vs[0];
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+sndBtn.addEventListener('click', () => {
+  if (!AC) { startSound(); return; }
+  soundOn = !soundOn; sndBtn.textContent = soundOn ? '音：ON' : '音：OFF';
+  if (!soundOn && window.speechSynthesis) speechSynthesis.cancel();
+});
+document.addEventListener('visibilitychange', () => { if (!AC) return; document.hidden ? AC.suspend() : AC.resume(); });
+
+let target = 0, sp = 0, last = performance.now(), capIdx = -2, lastStep = 0, finSaid = false, tapSeen = false;
+const tapEl = document.getElementById('tap');
 function readScroll() { const max = document.documentElement.scrollHeight - innerHeight; target = max > 0 ? clamp(scrollY / max) : 0; }
 addEventListener('scroll', readScroll, { passive: true });
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
   sp += (target - sp) * (1 - Math.exp(-dt * 6)); if (Math.abs(target - sp) < 1e-5) sp = target;
-  draw(sp);
+  const q = draw(sp, now); placeBubble(); mixFor(sp, q);
+  // a footstep every time you move about a stride forward
+  const stride = Math.floor(q * 70); if (stride !== lastStep) { if (sp > CONFIG.start && q < .97 && Math.abs(target - sp) > 1e-4) step(); lastStep = stride; }
+  tapEl.style.opacity = (!tapSeen && q > .12 && q < .45) ? 1 : 0;
   let idx = -1; CONFIG.captions.forEach((c, i) => { if (sp >= c[0] && sp <= c[1]) idx = i; });
-  if (idx !== capIdx) { capIdx = idx; capEl.classList.remove('on'); if (idx >= 0) { capEl.textContent = CONFIG.captions[idx][2]; void capEl.offsetWidth; capEl.classList.add('on'); } }
+  if (idx !== capIdx) { capIdx = idx; capEl.classList.remove('on'); if (idx >= 0) { capEl.textContent = CONFIG.captions[idx][2]; if (CONFIG.captions[idx][2].startsWith('「')) speak(CONFIG.captions[idx][2], 'ja-JP', .8, 'man'); void capEl.offsetWidth; capEl.classList.add('on'); } }
   finEl.classList.toggle('on', sp >= CONFIG.finale.from);
+  if (sp >= CONFIG.finale.from && !finSaid) { finSaid = true; speak('Bonjour !', 'fr-FR', .85, 'man'); } else if (sp < CONFIG.finale.from - .02) finSaid = false;
   hintEl.style.opacity = sp < .02 ? 1 : 0;
   railEl.style.height = (sp * 100).toFixed(1) + '%';
   requestAnimationFrame(frame);
@@ -152,6 +330,11 @@ resize();
 const all = loadAll();
 (async () => {
   while (loaded < Math.min(CONFIG.firstBatch, CONFIG.frames)) await new Promise(r => setTimeout(r, 50));
+  loadEl.classList.add('ready');
+  await new Promise(res => {
+    document.getElementById('go-snd').onclick = () => { startSound(); res(); };
+    document.getElementById('go-mute').onclick = () => { sndBtn.classList.add('show'); sndBtn.textContent = '音：OFF'; res(); };
+  });
   loadEl.classList.add('gone'); readScroll(); sp = target; requestAnimationFrame(frame);
   await all;
 })();
