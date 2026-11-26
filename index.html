@@ -243,6 +243,16 @@
 </main>
 
 <div id="toast" role="status" aria-live="polite"></div>
+<dialog id="ask" aria-labelledby="askMsg">
+  <form id="askForm" method="dialog">
+    <p id="askMsg"></p>
+    <div id="askFields"></div>
+    <div class="ask-actions">
+      <button type="button" id="askCancel">キャンセル</button>
+      <button type="submit" id="askOk" class="primary">OK</button>
+    </div>
+  </form>
+</dialog>
 <script src="app.js"></script>
 </body>
 </html>

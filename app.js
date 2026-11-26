@@ -134,6 +134,36 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
 }
 
+// 確認・入力のダイアログ（ブラウザ標準の confirm / prompt の代わり。使えない環境があるため）
+// キャンセルなら null、OKなら入力欄の値の配列（入力欄がなければ空配列）を返す
+function ask({ message, fields = [], ok = 'OK', danger = false }) {
+  const dlg = $('#ask');
+  $('#askMsg').textContent = message;
+  $('#askFields').innerHTML = fields.map((f, i) => `<label>${esc(f.label)}<input id="askField${i}" type="${f.type || 'text'}"
+    ${f.type === 'number' ? 'inputmode="decimal" step="any"' : ''} value="${esc(f.value ?? '')}" placeholder="${esc(f.placeholder || '')}" autocomplete="off"></label>`).join('');
+  const okBtn = $('#askOk');
+  okBtn.textContent = ok;
+  okBtn.className = danger ? 'danger-fill' : 'primary';
+  return new Promise((resolve) => {
+    const form = $('#askForm');
+    const cancelBtn = $('#askCancel');
+    const finish = (value) => {
+      form.removeEventListener('submit', onSubmit);
+      cancelBtn.removeEventListener('click', onCancel);
+      dlg.removeEventListener('cancel', onCancel);
+      if (dlg.open) dlg.close();
+      resolve(value);
+    };
+    const onSubmit = (e) => { e.preventDefault(); finish(fields.map((_, i) => $('#askField' + i).value)); };
+    const onCancel = (e) => { e.preventDefault(); finish(null); };
+    form.addEventListener('submit', onSubmit);
+    cancelBtn.addEventListener('click', onCancel);
+    dlg.addEventListener('cancel', onCancel);
+    dlg.showModal();
+    (fields.length ? $('#askField0') : okBtn).focus();
+  });
+}
+
 // ---------- タブ ----------
 function showTab(name) {
   $$('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
@@ -245,7 +275,7 @@ function editTx(id) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 async function removeTx(id) {
-  if (!confirm('この取引を削除しますか？')) return;
+  if (!(await ask({ message: 'この取引を削除しますか？', ok: '削除する', danger: true }))) return;
   // 他の端末にも削除を伝えるため、削除記録として残す
   await writeTx({ id, deleted: true, updatedAt: Date.now() });
   if (form.id.value === id) resetForm();
@@ -600,7 +630,7 @@ $('#checkout').addEventListener('click', async () => {
   const ticket = tRaw === '' ? null : Math.floor(Number(tRaw));
   if (tRaw !== '' && !(ticket > 0)) return toast('整理券番号は1以上の数字にしてください');
   if (ticket && todayOrders().some((o) => o.ticket === ticket && !o.served) &&
-      !confirm(`整理券 ${ticket} 番は、まだお渡ししていない注文で使われています。このまま追加しますか？`)) return;
+      !(await ask({ message: `整理券 ${ticket} 番は、まだお渡ししていない注文で使われています。このまま追加しますか？`, ok: 'このまま追加' }))) return;
   const now = Date.now();
   const t = {
     id: uid(),
@@ -699,7 +729,7 @@ $('#menuList').addEventListener('click', async (e) => {
   if (!e.target.closest('[data-mdel]')) return;
   const row = e.target.closest('[data-mid]');
   const m = settings.menu.find((x) => x.id === row.dataset.mid);
-  if (!m || !confirm(`「${m.name}」をメニューから削除しますか？（これまでの売上記録は残ります）`)) return;
+  if (!m || !(await ask({ message: `「${m.name}」をメニューから削除しますか？これまでの売上の記録は残ります。`, ok: '削除する', danger: true }))) return;
   Object.assign(m, { deleted: true, updatedAt: Date.now() });
   cart.delete(m.id);
   await saveSettings();
@@ -960,10 +990,16 @@ $('#planMenus').addEventListener('click', async (e) => {
   const card = e.target.closest('[data-pid]');
   const m = settings.menu.find((x) => x.id === card.dataset.pid);
   if (!m) return;
-  const total = prompt(`${m.name}：材料費の合計（円）\n例：麺・肉・野菜・ソースなど全部で 36000`);
-  if (total == null) return;
-  const count = prompt(`${m.name}：その材料で何個分作れますか？\n例：300`);
-  if (count == null) return;
+  const res = await ask({
+    message: `${m.name}の材料費から、1個あたりの原価を計算します。`,
+    fields: [
+      { label: '材料費の合計（円）', type: 'number', placeholder: '例：36000' },
+      { label: 'その材料で作れる個数', type: 'number', placeholder: '例：300' },
+    ],
+    ok: '計算する',
+  });
+  if (!res) return;
+  const [total, count] = res;
   const t = Number(total), c = Number(count);
   if (!(t >= 0) || !(c > 0)) return toast('数字を入れてください');
   const cost = Math.round((t / c) * 100) / 100;
@@ -988,7 +1024,7 @@ $('#costForm').addEventListener('submit', async (e) => {
 $('#costList').addEventListener('click', async (e) => {
   if (!e.target.closest('[data-cdel]')) return;
   const c = settings.costs.find((x) => x.id === e.target.closest('[data-cid]').dataset.cid);
-  if (!c || !confirm(`「${c.name}」を削除しますか？`)) return;
+  if (!c || !(await ask({ message: `「${c.name}」を削除しますか？`, ok: '削除する', danger: true }))) return;
   Object.assign(c, { deleted: true, updatedAt: Date.now() });
   await saveSettings();
   changed();
@@ -1031,13 +1067,14 @@ $('#tab-settings').addEventListener('click', async (e) => {
     const id = t.dataset.accDel;
     const used = txs.some((x) => x.account === id || x.toAccount === id);
     if (used) return toast('取引で使われている口座は削除できません');
-    if (!confirm('この口座を削除しますか？')) return;
+    if (!(await ask({ message: `「${accName(id)}」を削除しますか？`, ok: '削除する', danger: true }))) return;
     const a = settings.accounts.find((x) => x.id === id);
     Object.assign(a, { deleted: true, updatedAt: now });
   } else if (t.dataset.accEdit) {
     const a = settings.accounts.find((x) => x.id === t.dataset.accEdit);
-    const v = prompt(`${a.name} の期首残高（円）`, a.opening || 0);
-    if (v == null) return;
+    const res = await ask({ message: `${a.name}の期首残高を変更します。`, fields: [{ label: '期首残高（円）', type: 'number', value: a.opening || 0 }], ok: '保存' });
+    if (!res) return;
+    const v = res[0];
     if (v.trim() === '' || !Number.isFinite(Number(v))) return toast('数値を入力してください');
     Object.assign(a, { opening: Math.round(Number(v)), updatedAt: now });
   } else if (t.dataset.catDel) {
@@ -1125,7 +1162,7 @@ $('#importJson').addEventListener('change', async (e) => {
   const data = await readJsonFile(e.target);
   if (!data) return;
   const count = data.transactions.filter((t) => !t.deleted).length;
-  if (!confirm(`${count}件の取引で置き換えます。この端末の今のデータは消えます。よろしいですか？\n（データを残したい場合は「合体して取り込む」を使ってください）`)) return;
+  if (!(await ask({ message: `${count}件の取引で置き換えます。この端末の今のデータは消えます。データを残したい場合は「合体して取り込む」を使ってください。`, ok: '置き換える', danger: true }))) return;
   const t = db.transaction(['tx', 'meta'], 'readwrite');
   const txStore = t.objectStore('tx');
   txStore.clear();
@@ -1136,8 +1173,13 @@ $('#importJson').addEventListener('change', async (e) => {
   toast('復元しました');
 });
 $('#wipe').addEventListener('click', async () => {
-  if (!confirm('この端末のすべての取引と設定を削除します。元に戻せません。先にバックアップを取りましたか？')) return;
-  if (prompt('確認のため「削除」と入力してください') !== '削除') return;
+  const res = await ask({
+    message: 'この端末のすべての取引と設定を削除します。元に戻せません。先にバックアップを取ってください。',
+    fields: [{ label: '確認のため「削除」と入力', type: 'text' }],
+    ok: 'すべて削除', danger: true,
+  });
+  if (!res) return;
+  if (res[0].trim() !== '削除') return toast('「削除」と入力されていないので、やめました');
   const t = db.transaction(['tx', 'meta'], 'readwrite');
   t.objectStore('tx').clear();
   t.objectStore('meta').clear();
@@ -1304,7 +1346,7 @@ function changed() {
 }
 $('#syncNow').addEventListener('click', () => syncNow(true));
 $('#syncUnlink').addEventListener('click', async () => {
-  if (!confirm('この端末とGoogleドライブの連携を解除しますか？（この端末のデータは残ります）')) return;
+  if (!(await ask({ message: 'この端末とGoogleドライブの連携を解除しますか？この端末のデータは残ります。', ok: '解除する', danger: true }))) return;
   if (accessToken && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(accessToken, () => {});
   Object.assign(local, { clientId: '', fileId: null, token: null, tokenExp: 0, lastSync: 0 });
   accessToken = null;
