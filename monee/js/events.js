@@ -48,7 +48,7 @@ document.addEventListener('click',async e=>{
     try{await saveTxn(t.id,next);closeSheet();toast(a==='cancel'?'取消にしました':a==='confirmdraft'?'確定しました':'取消を戻しました',{undo:()=>saveTxn(t.id,prev)})}catch(err){toast(writeErr(err),{err:true})}return}
   if(a==='delete'){const t=S.txns.find(x=>x.id===id);if(!t)return;
     if(!await confirmDialog({title:'削除しますか？',body:`「${esc(t.merchant||'この記録')}」（${yen(t.amount)}）を削除します。`,ok:'削除する',danger:true}))return;
-    const prev={...t};delete prev.id;try{await S.db.collection('txns').doc(t.id).delete();toast('削除しました',{undo:()=>saveTxn(t.id,prev)})}catch(err){toast(writeErr(err),{err:true})}return}
+    const prev={...t};delete prev.id;let undone=false;try{await S.db.collection('txns').doc(t.id).delete();toast('削除しました',{undo:()=>{undone=true;return saveTxn(t.id,prev)}});deleteReceiptLater(t.receiptAssetId,()=>undone)}catch(err){toast(writeErr(err),{err:true})}return}
   if(a==='ftype'){S.form.type=el.dataset.v;S.form.category='';render();return}
   if(a==='fcat'){S.form.category=el.dataset.v;S.form.catAuto=false;$('#cat-hint')&&($('#cat-hint').innerHTML='');document.querySelectorAll('[data-act="fcat"]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===S.form.category));$('#err-cat')&&($('#err-cat').textContent='');return}
   if(a==='additem'){S.form.items.push({name:'',qty:1,unit:'',total:'',category:''});render();document.getElementById(`it-${S.form.items.length-1}-name`)?.focus();return}
@@ -56,7 +56,7 @@ document.addEventListener('click',async e=>{
   if(a==='savedraft'){submitForm(true,el);return}
   if(a==='scanretry'){runExtraction();return}
   if(a==='scanreset'){S.scan=null;render();return}
-  if(a==='scanback'){e.preventDefault();if(await confirmDialog({title:'読み取り結果を破棄しますか？',body:'保存していない内容は失われます。',ok:'破棄する',danger:true})){S.scan=null;S.form=null;render()}return}
+  if(a==='scanback'){e.preventDefault();if(await confirmDialog({title:'読み取り結果を破棄しますか？',body:'保存していない内容は失われます。',ok:'破棄する',danger:true})){const aid=S.scan?.assetId;S.scan=null;S.form=null;render();deleteReceiptLater(aid,()=>false)}return}
   if(a==='scanmanual'){const s=S.scan;S.form=blankForm({receiptAssetId:s?.assetId||null,source:'receipt'});S.scan={...s,phase:'review'};render();return}
   if(a==='sugg'){sendChat(el.dataset.v);return}
   if(a==='psave'||a==='pedit'||a==='pdrop'){const p=S.chat.proposals[el.dataset.pid];if(!p||p.state!=='open')return;
@@ -79,10 +79,12 @@ document.addEventListener('click',async e=>{
   if(a==='iai'){runInsightAI();return}
   if(a==='ifam'){S.ins.exFam=!S.ins.exFam;render();return}
   if(a.startsWith('s-')&&a!=='s-wipe'){settingsSheet(a);return}
+  if(a==='restore'){restoreSheet();return}
+  if(a==='rsok'){applyRestore(el);return}
   if(a==='exp'){const {data,name}=exportData(el.dataset.v);if(S.downloads){try{await S.downloads.save({filename:name,data});closeSheet();toast('書き出しました')}catch(err){toast('書き出しを中止しました',{err:true})}}else{try{await navigator.clipboard.writeText(data);toast('内容をコピーしました')}catch(err){toast('コピーできませんでした',{err:true})}}return}
   if(a==='s-wipe'){if(!S.txns.length){toast('削除する記録はありません');return}
-    if(!await confirmDialog({title:'すべての記録を削除',body:`${S.txns.length}件の記録とがまん貯金をすべて削除します。この操作は元に戻せません。必要なら先にデータを書き出してください。`,ok:'すべて削除',danger:true,typeWord:'削除'}))return;
-    const ids=S.txns.map(t=>t.id);let n=0;toast('削除しています…');try{for(const i of ids){await S.db.collection('txns').doc(i).delete();n++}for(const x of S.skips.slice()){await S.db.collection('skips').doc(x.id).delete()}toast(`${n}件の記録を削除しました`)}catch(err){toast(`${n}件まで削除しました。${writeErr(err)}`,{err:true})}return}
+    if(!await confirmDialog({title:'すべての記録を削除',body:`${S.txns.length}件の記録と、がまん貯金・0円の日・レシート画像をすべて削除します。この操作は元に戻せません。必要なら先にデータを書き出してください。`,ok:'すべて削除',danger:true,typeWord:'削除'}))return;
+    const ids=S.txns.map(t=>t.id);const txnsBefore=Object.fromEntries(S.txns.map(t=>[t.id,t.receiptAssetId||null]));let n=0;toast('削除しています…');try{for(const i of ids){await S.db.collection('txns').doc(i).delete();n++}for(const x of S.skips.slice()){await S.db.collection('skips').doc(x.id).delete()}for(const d of Object.keys(S.days)){await S.db.collection('days').doc(d).delete()}const imgs=[...new Set(ids.map(i=>txnsBefore[i]).filter(Boolean))];for(const a of imgs){try{await S.assets?.delete(a)}catch(e){}}toast(`${n}件の記録を削除しました`)}catch(err){toast(`${n}件まで削除しました。${writeErr(err)}`,{err:true})}return}
 });
 document.addEventListener('input',e=>{
   const t=e.target;
@@ -103,6 +105,7 @@ document.addEventListener('change',e=>{
   if(t.id==='htype'){S.hist.type=t.value;render()}if(t.id==='hcat'){S.hist.cat=t.value;render()}if(t.id==='hmethod'){S.hist.method=t.value;render()}
   if(t.id==='hfrom'){S.hist.from=t.value;render()}if(t.id==='hto'){S.hist.to=t.value;render()}
   if(S.form&&(t.tagName==='SELECT')&&t.dataset.f){S.form[t.dataset.f]=t.dataset.f==='taxIncluded'?t.value==='1':t.value;if(t.dataset.f==='refundOf'){const x=S.txns.find(i=>i.id===t.value);if(x&&!S.form.amount)S.form.amount=String(toInt(x.amount)-toInt(x.refunded));render()}updateDerived()}
+  if(t.dataset.restore){const f=t.files&&t.files[0];if(f)previewRestore(f);return}
   if(t.dataset.scan){const f=t.files&&t.files[0];t.value='';if(!f)return;if(t.dataset.scan==='chat'){location.hash='#add-scan';setTimeout(()=>handleScanFile(f),0)}else handleScanFile(f)}
 });
 document.addEventListener('submit',e=>{

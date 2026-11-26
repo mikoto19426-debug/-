@@ -22,6 +22,7 @@ function settingsView(){
    ${row('tag','週の評価から除くメモ',st.excludeWords.length?esc(st.excludeWords.join('・')):'なし','s-exclude')}
    ${row('calendar','通貨と日付','日本円（¥）· 週の始まり：'+(st.weekStart===0?'日曜':'月曜'),'s-date')}
    ${row('download','データを書き出す','JSON・CSV','s-export')}
+   ${row('undo','バックアップから戻す','書き出したJSONから合体して戻す','restore')}
    <button class="tx" data-act="s-wipe"><span class="cat-ic" style="background:var(--danger-bg);color:var(--danger)">${ic('trash','sm')}</span><span class="mid"><span class="t1" style="display:block;color:var(--danger)">すべての記録を削除</span><span class="t2">元に戻せません</span></span>${ic('right','sm')}</button></div></section>
   <p class="sub" style="margin-top:20px">記録 ${S.txns.length}件 · monee. v1.1</p><p class="tagline" style="margin:4px 0 0;font-size:14px">Your money bestie. A period on mindless spending.</p></div></div>`;
 }
@@ -62,7 +63,7 @@ function settingsSheet(kind){
 }
 function exportData(kind){
   let data,name;
-  if(kind==='json'){data=JSON.stringify({exportedAt:new Date().toISOString(),settings:settings(),transactions:S.txns,gaman:S.skips},null,2);name=`monee-${today()}.json`}
+  if(kind==='json'){data=JSON.stringify({app:'monee.',version:2,exportedAt:new Date().toISOString(),settings:settings(),transactions:S.txns,gaman:S.skips,days:S.days},null,2);name=`monee-${today()}.json`}
   else{const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;const rows=[['日付','時刻','種類','状態','店名・内容','カテゴリ','支払い方法','金額','返金額','品目','メモ','買ってよかった？']].concat(S.txns.map(t=>[t.date,t.time,TYPE_L[t.type],STATUS_L[t.status]||'確定',t.merchant,t.type==='transfer'?'':catBy(t.category).name,t.type==='transfer'?`${t.method}→${t.toMethod}`:t.method,toInt(t.amount),toInt(t.refunded),(t.items||[]).map(i=>`${i.name}×${i.qty}=${i.total}`).join(' / '),t.note,FEEL[t.feel]?.l||'']));data='﻿'+rows.map(r=>r.map(q).join(',')).join('\n');name=`monee-${today()}.csv`}
   return {data,name};
 }
