@@ -31,10 +31,13 @@ function weeklyReview(I){
   const pc=(a,b)=>b?`（${a-b>0?'+':''}${Math.round((a-b)/b*100)}%）`:'';
   let grade,gl,msg;
   if(!hasPrev||!prev.exp){grade='—';gl='';msg='先週の記録がまだないので、比較は来週からだよ。まずは今週の数字を基準にしよう。'}
-  else{const sc=(d<0?1:0)+(wd<0?1:0)+(d<0&&wd<=0&&cur.wn<=prev.wn?0:0);
-    if(sc===2){grade='◎';gl='いい感じ！';msg=`支出もモヤっとしやすい出費も${partial?'先週の同じ曜日まで':'先週'}より減ってるよ。`}
-    else if(sc===1){grade='○';gl='まずまず';msg=d<0?`支出全体は減ったけど、モヤっとしやすい出費は${wd>0?'少し増えたよ':'横ばいだよ'}。`:`支出全体は増えたけど、モヤっとしやすい出費は減ってるよ。大きな出費は必要なものだったか見直してみよう。`}
-    else{grade='△';gl='来週がんばろう';msg=`${partial?'先週の同じ曜日まで':'先週'}と比べて、支出もモヤっとしやすい出費も増えてるよ。`}}
+  else if(!M.rated||(!cur.waste&&!prev.waste)){ // モヤっとの比べようがないときは、支出だけで正直に
+    const w=partial?'先週の同じ曜日まで':'先週';
+    if(d<0){grade='○';gl='まずまず';msg=`支出は${w}より減ってるよ。`}else if(d===0){grade='○';gl='横ばい';msg=`支出は${w}と同じくらいだよ。`}else{grade='△';gl='来週がんばろう';msg=`支出が${w}より増えてるよ。大きな出費は必要なものだったか見直してみよう。`}}
+  else{const w=partial?'先週の同じ曜日まで':'先週';const wl=wd<0?'減った':wd>0?'増えた':'横ばい';
+    if(d<0&&wd<=0){grade='◎';gl='いい感じ！';msg=`支出は${w}より減って、モヤっとしやすい出費も${wl==='横ばい'?'増えていない':'減った'}よ。`}
+    else if(d<0||wd<0){grade='○';gl='まずまず';msg=`支出は${w}より${d<0?'減った':d>0?'増えた':'横ばい'}、モヤっとしやすい出費は${wl}よ。`}
+    else{grade='△';gl='来週がんばろう';msg=`${w}と比べて、支出は${d>0?'増えて':'横ばいで'}、モヤっとしやすい出費は${wl}よ。`}}
   const topW=Object.entries(cur.byType).sort((a,b)=>b[1].amt-a[1].amt)[0];
   const tip=topW?`「${topW[0]}」はモヤっとしやすいみたい。次に買う前に、10秒だけ考えてみよう。`:'';
   // 8-week trend
