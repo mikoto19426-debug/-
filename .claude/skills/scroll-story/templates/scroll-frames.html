@@ -1,0 +1,137 @@
+<title>STORY TITLE</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Klee+One:wght@600&family=Cormorant+Garamond:wght@600&display=swap">
+<style>
+/* Layout: a tall scroll track scrubs a full-screen canvas of video frames; captions float low-center. Single night look. */
+:root {
+  --night: #0c1636;
+  --ink: #070d24;
+  --gas: #f3c95c;
+  --cream: #fbf0cf;
+  --muted: rgba(251, 240, 207, 0.55);
+  --veil: rgba(7, 13, 36, 0.55);
+  --font-jp: "Klee One", "Hiragino Maru Gothic ProN", "Yu Gothic", sans-serif;
+  --font-title: "Cormorant Garamond", "Times New Roman", serif;
+  color-scheme: dark;
+}
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { display: none; }
+body {
+  background: var(--night); color: var(--cream);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+#track { height: 1200vh; }
+#stage { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#cap {
+  position: fixed; left: 50%; bottom: calc(11% + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 8px); width: max-content; max-width: min(86vw, 30em);
+  padding: 0.6em 1.6em; font-family: var(--font-jp); font-weight: 600;
+  font-size: clamp(16px, 2.3vw, 28px); line-height: 1.6; text-align: center;
+  text-shadow: 0 0 14px var(--ink), 0 0 4px var(--ink);
+  background: radial-gradient(ellipse at center, var(--veil) 0%, transparent 72%);
+  opacity: 0; transition: opacity .8s ease, transform .9s cubic-bezier(.2,.9,.3,1.2);
+  pointer-events: none; text-wrap: balance;
+}
+#cap.on { opacity: 1; transform: translate(-50%, 0); }
+#finale {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -40%) scale(.96);
+  font-family: var(--font-title); font-weight: 600; font-size: clamp(56px, 11vw, 170px);
+  text-shadow: 0 0 30px rgba(255, 214, 120, .9), 0 0 80px rgba(255, 180, 60, .6);
+  opacity: 0; transition: opacity 1.4s ease, transform 1.8s cubic-bezier(.2,.9,.3,1.1);
+  pointer-events: none; white-space: nowrap;
+}
+#finale.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+#hint {
+  position: fixed; left: 50%; bottom: calc(3.5% + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+  color: var(--muted); font-family: var(--font-jp); font-size: 13px; transition: opacity .6s ease; pointer-events: none;
+}
+#rail { position: fixed; right: calc(18px + env(safe-area-inset-right, 0px)); top: 50%; transform: translateY(-50%);
+  width: 3px; height: 120px; border-radius: 2px; background: rgba(251, 240, 207, .2); pointer-events: none; }
+#rail i { position: absolute; left: 0; top: 0; width: 100%; height: 0; border-radius: 2px; background: var(--gas); }
+#loading { position: fixed; inset: 0; display: flex; flex-direction: column; gap: 14px; align-items: center; justify-content: center;
+  font-family: var(--font-jp); color: var(--muted); background: var(--night); transition: opacity .8s ease; }
+#loading .bar { width: min(60vw, 280px); height: 3px; background: rgba(251, 240, 207, .2); border-radius: 2px; overflow: hidden; }
+#loading .bar i { display: block; height: 100%; width: 0; background: var(--gas); }
+#loading.gone { opacity: 0; pointer-events: none; }
+</style>
+
+<div id="track"></div>
+<canvas id="stage" role="img" aria-label="STORY DESCRIPTION"></canvas>
+<div id="cap" aria-live="polite"></div>
+<div id="finale" aria-hidden="true"></div>
+<div id="hint">スクロールしてね</div>
+<div id="rail" aria-hidden="true"><i></i></div>
+<div id="loading"><span>読み込み中…</span><div class="bar"><i></i></div></div>
+
+<script>
+(() => {
+'use strict';
+/* ===== CONFIG: edit only this block ===== */
+const CONFIG = {
+  frames: 240,                    // number of frames in the folder
+  path: i => `frames/f${String(i + 1).padStart(4, '0')}.webp`,
+  captions: [                     // [from, to, text], scroll 0..1
+    [0.00, 0.08, 'はじまりの一言'],
+    [0.30, 0.42, 'まんなかの一言'],
+    [0.80, 0.90, 'おわりの一言']
+  ],
+  finale: { from: 0.95, text: 'Bonjour' },
+  firstBatch: 40                  // frames to load before showing the page
+};
+/* ======================================= */
+
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const cv = document.getElementById('stage'), ctx = cv.getContext('2d');
+const capEl = document.getElementById('cap'), finEl = document.getElementById('finale');
+const hintEl = document.getElementById('hint'), railEl = document.querySelector('#rail i');
+const loadEl = document.getElementById('loading'), barEl = document.querySelector('#loading .bar i');
+finEl.textContent = CONFIG.finale.text;
+
+const imgs = new Array(CONFIG.frames); let loaded = 0;
+function load(i) {
+  return new Promise(res => { const im = new Image(); im.decoding = 'async';
+    im.onload = () => { imgs[i] = im; loaded++; barEl.style.width = (loaded / CONFIG.frames * 100) + '%'; res(); };
+    im.onerror = () => res(); im.src = CONFIG.path(i); });
+}
+// load evenly spaced frames first so scrubbing works early, then fill the gaps
+const order = []; for (let step = 16; step >= 1; step = step >> 1) for (let i = 0; i < CONFIG.frames; i += step) if (!order.includes(i)) order.push(i);
+async function loadAll() { let k = 0; const next = async () => { while (k < order.length) await load(order[k++]); }; await Promise.all([next(), next(), next(), next()]); }
+
+let W = 0, H = 0;
+function resize() { const d = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener('resize', resize);
+
+function nearest(i) { for (let r = 0; r < CONFIG.frames; r++) { if (imgs[i - r]) return imgs[i - r]; if (imgs[i + r]) return imgs[i + r]; } return null; }
+function draw(p) {
+  const im = nearest(Math.round(p * (CONFIG.frames - 1))); if (!im) return;
+  const s = Math.max(W / im.width, H / im.height), w = im.width * s, h = im.height * s;
+  ctx.drawImage(im, (W - w) / 2, (H - h) / 2, w, h);
+}
+
+let target = 0, sp = 0, last = performance.now(), capIdx = -2;
+function readScroll() { const max = document.documentElement.scrollHeight - innerHeight; target = max > 0 ? clamp(scrollY / max) : 0; }
+addEventListener('scroll', readScroll, { passive: true });
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  sp += (target - sp) * (1 - Math.exp(-dt * 6)); if (Math.abs(target - sp) < 1e-5) sp = target;
+  draw(sp);
+  let idx = -1; CONFIG.captions.forEach((c, i) => { if (sp >= c[0] && sp <= c[1]) idx = i; });
+  if (idx !== capIdx) { capIdx = idx; capEl.classList.remove('on'); if (idx >= 0) { capEl.textContent = CONFIG.captions[idx][2]; void capEl.offsetWidth; capEl.classList.add('on'); } }
+  finEl.classList.toggle('on', sp >= CONFIG.finale.from);
+  hintEl.style.opacity = sp < .02 ? 1 : 0;
+  railEl.style.height = (sp * 100).toFixed(1) + '%';
+  requestAnimationFrame(frame);
+}
+
+resize();
+const all = loadAll();
+(async () => {
+  while (loaded < Math.min(CONFIG.firstBatch, CONFIG.frames)) await new Promise(r => setTimeout(r, 50));
+  loadEl.classList.add('gone'); readScroll(); sp = target; requestAnimationFrame(frame);
+  await all;
+})();
+})();
+</script>
