@@ -293,6 +293,7 @@ let voices = [];
 const loadVoices = () => voices = speechSynthesis ? speechSynthesis.getVoices() : [];
 if (window.speechSynthesis) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
 function speak(text, lang, pitch = 1, kind) {
+  return;   // read-aloud voices sounded unnatural to the user: speech bubbles only
   if (!soundOn || !window.speechSynthesis) return;
   const u = new SpeechSynthesisUtterance(text.replace(/[「」]/g, '')); u.lang = lang; u.pitch = pitch; u.rate = lang === 'ja-JP' ? 1.0 : .85; u.volume = 1;
   const vs = voices.filter(v => v.lang && v.lang.replace('_', '-').startsWith(lang.slice(0, 2)));
